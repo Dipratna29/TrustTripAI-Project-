@@ -1,0 +1,34 @@
+# Files EAS Build should NOT upload. This replaces .gitignore for EAS, so it repeats those rules.
+# Only frontend/ is needed to build the Android app.
+
+# Other parts of the monorepo
+/backend/
+/admin/
+.github/
+.claude/
+*.md
+!frontend/README.md
+
+# Dependencies and build output (EAS installs and builds in the cloud)
+**/node_modules/
+/android/
+/ios/
+/.expo/
+/dist/
+/web-build/
+**/build/
+**/.gradle/
+
+# Secrets and local env
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+*.keystore
+*.jks
+
+# Misc
+**/__pycache__/
+**/*.log
+/emulator_screen*.png

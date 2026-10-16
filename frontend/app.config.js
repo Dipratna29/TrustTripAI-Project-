@@ -1,6 +1,6 @@
 /**
  * Dynamic Expo config: lets EAS builds inject the production API URL without editing app.json.
- *   API_BASE_URL=https://trusttrip-api.onrender.com eas build -p android --profile preview
+ *   API_BASE_URL=https://trusttrip-api-r5vu.onrender.com eas build -p android --profile preview
  * (or set it per profile in eas.json "env").
  */
 module.exports = ({ config }) => ({
