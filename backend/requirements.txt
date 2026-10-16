@@ -16,3 +16,4 @@ deep-translator==1.11.4
 razorpay==1.4.2
 supabase==2.31.0
 groq==1.7.0
+setuptools>=70,<81  # razorpay imports pkg_resources (not bundled with Python 3.12+)
