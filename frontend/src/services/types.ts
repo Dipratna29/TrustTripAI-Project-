@@ -78,6 +78,8 @@ export interface ActiveLocation {
   longitude: number;
   name: string;
   address?: string;
+  /** "City, State" for display, e.g. "Ichalkaranji, Maharashtra" */
+  locality?: string;
   source: LocationSource;
   accuracy?: number | null;
   timestamp?: number;

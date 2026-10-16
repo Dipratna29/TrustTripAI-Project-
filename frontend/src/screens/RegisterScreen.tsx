@@ -13,71 +13,71 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import api from "../config/api";
 import { useAuth } from "../context/AuthContext";
 import { getFriendlyErrorMessage } from "../utils/apiError";
 import CosmicBackground from "../components/common/CosmicBackground";
-import SurfaceCard from "../components/common/SurfaceCard";
 import AppIcon from "../components/common/AppIcon";
-import { colors, typography, radius, shadows, spacing } from "../theme";
+import { radius } from "../theme";
 
 export default function RegisterScreen({ navigation }: any) {
   const { register: authRegister } = useAuth();
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [nationality, setNationality] = useState("Indian");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [name, setName] = useState("");
   const [mob, setMobile] = useState("");
-  const [address, setAddress] = useState("");
-  const [nationality, setNationality] = useState("");
   const [emergency_contact, setEmergencyContact] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
-  const register = async () => {
-    if (loading) return;
-
-    if (!name.trim()) {
-      Alert.alert("Required Field", "Please provide your full name.");
-      return;
+  const handleNextOrSubmit = () => {
+    if (step === 1) {
+      if (!name.trim()) {
+        Alert.alert("Required Field", "Please enter your full name.");
+        return;
+      }
+      if (!username.trim()) {
+        Alert.alert("Required Field", "Please choose a username.");
+        return;
+      }
+      if (!password) {
+        Alert.alert("Required Field", "Please enter a password.");
+        return;
+      }
+      if (password.length < 6) {
+        Alert.alert("Security Requirement", "Password must be at least 6 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert("Password Mismatch", "Passwords do not match. Please verify your password confirmation.");
+        return;
+      }
+      // Proceed to Step 2 (Phone & Emergency Contact) or register directly
+      submitRegistration();
     }
+  };
 
-    if (!username.trim()) {
-      Alert.alert("Required Field", "Please choose a username.");
-      return;
-    }
-
-    if (!password) {
-      Alert.alert("Required Field", "Please enter a password.");
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert("Security Requirement", "Password must be at least 6 characters.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert("Password Mismatch", "Passwords do not match. Please verify your password confirmation.");
-      return;
-    }
-
+  const submitRegistration = async () => {
     setLoading(true);
     try {
       const result = await authRegister({
         username: username.trim(),
         password,
         name: name.trim(),
-        mob: mob.trim(),
-        address: address.trim(),
-        nationality: nationality.trim(),
-        emergency_contact: emergency_contact.trim(),
+        mob: mob.trim() || "N/A",
+        address: "N/A",
+        nationality: nationality.trim() || "Indian",
+        emergency_contact: emergency_contact.trim() || "112",
       });
 
       if (result.success) {
         Alert.alert(
           "Account Created",
-          "Your TrustTrip traveler account has been created successfully. Please sign in to continue.",
+          "Your TrustTrip traveler account has been created successfully. Welcome to TrustTrip!",
           [
             {
               text: "Sign In",
@@ -100,7 +100,7 @@ export default function RegisterScreen({ navigation }: any) {
   };
 
   return (
-    <CosmicBackground>
+    <CosmicBackground variant="light">
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -111,44 +111,57 @@ export default function RegisterScreen({ navigation }: any) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* TOP BAR */}
-            <View style={styles.topBar}>
+            {/* TOP HEADER WITH BACK BUTTON */}
+            <View style={styles.topHeader}>
               <TouchableOpacity
-                style={styles.backBtn}
+                style={styles.backButton}
                 onPress={() => navigation.goBack()}
                 activeOpacity={0.7}
               >
-                <AppIcon name="arrow-back" size={20} color={colors.textPrimary} />
-                <Text style={styles.backBtnText}>Back</Text>
+                <AppIcon name="arrow-back" size={20} color="#0F172A" />
               </TouchableOpacity>
-              <Text style={styles.brandTitle}>
-                Trust<Text style={{ color: colors.primary }}>Trip</Text>
-              </Text>
+              <Text style={styles.headerTitle}>Create Account</Text>
             </View>
 
-            {/* FORM CARD */}
-            <SurfaceCard style={styles.formCard} variant="elevated">
-              <Text style={styles.headerTitle}>Create Account</Text>
-              <Text style={styles.headerSubtitle}>
-                Register to activate your personal safety guardian & community protection
-              </Text>
+            <Text style={styles.headerSubtitle}>
+              Join TrustTrip and travel with confidence
+            </Text>
 
-              {/* 1. PERSONAL INFORMATION */}
-              <Text style={styles.sectionHeader}>PERSONAL INFORMATION</Text>
+            {/* STEP PROGRESS INDICATOR (1 - 2 - 3) */}
+            <View style={styles.stepContainer}>
+              <View style={[styles.stepCircle, styles.stepCircleActive]}>
+                <Text style={styles.stepTextActive}>1</Text>
+              </View>
+              <View style={styles.stepLine} />
+              <View style={styles.stepCircle}>
+                <Text style={styles.stepText}>2</Text>
+              </View>
+              <View style={styles.stepLine} />
+              <View style={styles.stepCircle}>
+                <Text style={styles.stepText}>3</Text>
+              </View>
+            </View>
 
+            {/* FORM CONTAINER */}
+            <View style={styles.formCard}>
+              {/* FULL NAME */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={[styles.inputWrapper, focusedField === "name" && styles.inputWrapperFocused]}>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === "name" && styles.inputWrapperFocused,
+                  ]}
+                >
                   <AppIcon
                     name="person-outline"
                     size={18}
-                    color={focusedField === "name" ? colors.primary : colors.textMuted}
+                    color={focusedField === "name" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter your full name"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Full Name"
+                    placeholderTextColor="#94A3B8"
                     value={name}
                     onChangeText={setName}
                     onFocus={() => setFocusedField("name")}
@@ -157,19 +170,24 @@ export default function RegisterScreen({ navigation }: any) {
                 </View>
               </View>
 
+              {/* NATIONALITY */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Nationality</Text>
-                <View style={[styles.inputWrapper, focusedField === "nationality" && styles.inputWrapperFocused]}>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === "nationality" && styles.inputWrapperFocused,
+                  ]}
+                >
                   <AppIcon
                     name="globe-outline"
                     size={18}
-                    color={focusedField === "nationality" ? colors.primary : colors.textMuted}
+                    color={focusedField === "nationality" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g. Indian, American, etc."
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Nationality (e.g. Indian)"
+                    placeholderTextColor="#94A3B8"
                     value={nationality}
                     onChangeText={setNationality}
                     onFocus={() => setFocusedField("nationality")}
@@ -178,170 +196,134 @@ export default function RegisterScreen({ navigation }: any) {
                 </View>
               </View>
 
-              {/* 2. ACCOUNT CREDENTIALS */}
-              <Text style={styles.sectionHeader}>ACCOUNT CREDENTIALS</Text>
-
+              {/* USERNAME */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Username</Text>
-                <View style={[styles.inputWrapper, focusedField === "username" && styles.inputWrapperFocused]}>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === "username" && styles.inputWrapperFocused,
+                  ]}
+                >
                   <AppIcon
-                    name="person-circle-outline"
+                    name="at-outline"
                     size={18}
-                    color={focusedField === "username" ? colors.primary : colors.textMuted}
+                    color={focusedField === "username" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Choose a unique username"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Username"
+                    placeholderTextColor="#94A3B8"
                     value={username}
                     onChangeText={setUsername}
                     autoCapitalize="none"
+                    autoCorrect={false}
                     onFocus={() => setFocusedField("username")}
                     onBlur={() => setFocusedField(null)}
                   />
                 </View>
               </View>
 
+              {/* PASSWORD */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <View style={[styles.inputWrapper, focusedField === "password" && styles.inputWrapperFocused]}>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === "password" && styles.inputWrapperFocused,
+                  ]}
+                >
                   <AppIcon
                     name="lock-closed-outline"
                     size={18}
-                    color={focusedField === "password" ? colors.primary : colors.textMuted}
+                    color={focusedField === "password" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Minimum 6 characters"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Password"
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
-                    secureTextEntry
+                    secureTextEntry={!showPassword}
                     autoCapitalize="none"
+                    autoCorrect={false}
                     onFocus={() => setFocusedField("password")}
                     onBlur={() => setFocusedField(null)}
                   />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeBtn}
+                  >
+                    <AppIcon
+                      name={showPassword ? "eye-off-outline" : "eye-outline"}
+                      size={18}
+                      color="#94A3B8"
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
 
+              {/* CONFIRM PASSWORD */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Confirm Password</Text>
-                <View style={[styles.inputWrapper, focusedField === "confirmPassword" && styles.inputWrapperFocused]}>
+                <View
+                  style={[
+                    styles.inputWrapper,
+                    focusedField === "confirmPassword" && styles.inputWrapperFocused,
+                  ]}
+                >
                   <AppIcon
                     name="lock-closed-outline"
                     size={18}
-                    color={focusedField === "confirmPassword" ? colors.primary : colors.textMuted}
+                    color={focusedField === "confirmPassword" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Re-enter your password"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Confirm Password"
+                    placeholderTextColor="#94A3B8"
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
-                    secureTextEntry
+                    secureTextEntry={!showConfirmPassword}
                     autoCapitalize="none"
+                    autoCorrect={false}
                     onFocus={() => setFocusedField("confirmPassword")}
                     onBlur={() => setFocusedField(null)}
                   />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={styles.eyeBtn}
+                  >
+                    <AppIcon
+                      name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                      size={18}
+                      color="#94A3B8"
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
 
-              {/* 3. CONTACT & SAFETY */}
-              <Text style={styles.sectionHeader}>CONTACT & EMERGENCY</Text>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Mobile Phone</Text>
-                <View style={[styles.inputWrapper, focusedField === "mob" && styles.inputWrapperFocused]}>
-                  <AppIcon
-                    name="call-outline"
-                    size={18}
-                    color={focusedField === "mob" ? colors.primary : colors.textMuted}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. +91 9876543210"
-                    placeholderTextColor={colors.textMuted}
-                    value={mob}
-                    onChangeText={setMobile}
-                    keyboardType="phone-pad"
-                    onFocus={() => setFocusedField("mob")}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Emergency Contact Phone</Text>
-                <View style={[styles.inputWrapper, focusedField === "emergency" && styles.inputWrapperFocused]}>
-                  <AppIcon
-                    name="alert-circle-outline"
-                    size={18}
-                    color={focusedField === "emergency" ? colors.primary : colors.textMuted}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Emergency guardian phone"
-                    placeholderTextColor={colors.textMuted}
-                    value={emergency_contact}
-                    onChangeText={setEmergencyContact}
-                    keyboardType="phone-pad"
-                    onFocus={() => setFocusedField("emergency")}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Residential / Current Address</Text>
-                <View style={[styles.inputWrapper, focusedField === "address" && styles.inputWrapperFocused]}>
-                  <AppIcon
-                    name="location-outline"
-                    size={18}
-                    color={focusedField === "address" ? colors.primary : colors.textMuted}
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="City, State / Hotel"
-                    placeholderTextColor={colors.textMuted}
-                    value={address}
-                    onChangeText={setAddress}
-                    onFocus={() => setFocusedField("address")}
-                    onBlur={() => setFocusedField(null)}
-                  />
-                </View>
-              </View>
-
-              {/* SUBMIT BUTTON */}
+              {/* NEXT / CREATE ACCOUNT BUTTON */}
               <TouchableOpacity
                 style={[styles.primaryBtn, loading && styles.btnDisabled]}
-                onPress={register}
+                onPress={handleNextOrSubmit}
                 disabled={loading}
                 activeOpacity={0.85}
               >
                 {loading ? (
-                  <View style={styles.btnLoadingRow}>
-                    <ActivityIndicator size="small" color={colors.background} />
-                    <Text style={styles.primaryBtnText}>Creating Account...</Text>
-                  </View>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Create Account</Text>
+                  <Text style={styles.primaryBtnText}>Next</Text>
                 )}
               </TouchableOpacity>
 
-              {/* SIGN IN LINK */}
-              <View style={styles.loginRow}>
-                <Text style={styles.loginPrompt}>Already have an account?</Text>
+              {/* SIGN IN FOOTER */}
+              <View style={styles.footerRow}>
+                <Text style={styles.footerPrompt}>Already have an account? </Text>
                 <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-                  <Text style={styles.loginLink}>Sign In</Text>
+                  <Text style={styles.footerLink}>Sign In</Text>
                 </TouchableOpacity>
               </View>
-            </SurfaceCard>
+            </View>
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -351,127 +333,149 @@ export default function RegisterScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: spacing.screenPadding,
+    paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 32,
   },
-  topBar: {
+  topHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: 6,
   },
-  backBtn: {
-    flexDirection: "row",
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingRight: 12,
-  },
-  backBtnText: {
-    ...typography.bodySm,
-    color: colors.textPrimary,
-    fontWeight: "600",
-  },
-  brandTitle: {
-    fontFamily: typography.displayLarge.fontFamily,
-    fontSize: 22,
-    fontWeight: "900",
-    color: colors.white,
-    letterSpacing: -0.5,
-  },
-  formCard: {
-    padding: 22,
-    borderColor: colors.border,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginRight: 12,
   },
   headerTitle: {
-    ...typography.h2,
     fontSize: 22,
-    color: colors.white,
+    fontWeight: "800",
+    color: "#0F172A",
   },
   headerSubtitle: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-    marginTop: 6,
-    marginBottom: 16,
-    lineHeight: 20,
+    fontSize: 13,
+    color: "#64748B",
+    marginLeft: 48,
+    marginBottom: 20,
   },
-  sectionHeader: {
-    fontSize: 10,
+  stepContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  stepCircleActive: {
+    backgroundColor: "#00C292",
+    borderColor: "#00C292",
+  },
+  stepText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#94A3B8",
+  },
+  stepTextActive: {
+    fontSize: 12,
     fontWeight: "800",
-    color: colors.primary,
-    letterSpacing: 1,
-    marginTop: 14,
-    marginBottom: 10,
+    color: "#FFFFFF",
+  },
+  stepLine: {
+    width: 40,
+    height: 2,
+    backgroundColor: "#E2E8F0",
+    marginHorizontal: 8,
+  },
+  formCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   inputGroup: {
     marginBottom: 14,
   },
-  inputLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: "600",
-    marginBottom: 6,
-  },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.input,
+    borderColor: "#E2E8F0",
+    borderRadius: radius.card,
     paddingHorizontal: 14,
-    minHeight: 48,
+    height: 50,
   },
   inputWrapperFocused: {
-    borderColor: colors.primary,
+    borderColor: "#00C292",
+    backgroundColor: "#FFFFFF",
   },
   inputIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    color: colors.textPrimary,
     fontSize: 14,
-    paddingVertical: 10,
+    color: "#0F172A",
+    fontWeight: "500",
+  },
+  eyeBtn: {
+    padding: 6,
   },
   primaryBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#00C292",
     borderRadius: radius.button,
-    paddingVertical: 15,
+    height: 50,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 18,
-    ...shadows.glowPrimary,
+    marginTop: 10,
+    shadowColor: "#00C292",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   btnDisabled: {
     opacity: 0.65,
   },
   primaryBtnText: {
-    fontFamily: typography.button.fontFamily,
-    color: colors.background,
     fontSize: 16,
     fontWeight: "800",
+    color: "#FFFFFF",
   },
-  btnLoadingRow: {
+  footerRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  loginRow: {
-    flexDirection: "row",
-    alignItems: "center",
     justifyContent: "center",
-    marginTop: 20,
-    gap: 6,
+    alignItems: "center",
+    marginTop: 18,
   },
-  loginPrompt: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
+  footerPrompt: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "500",
   },
-  loginLink: {
-    ...typography.bodySm,
-    color: colors.primary,
+  footerLink: {
+    fontSize: 13,
     fontWeight: "800",
+    color: "#00C292",
   },
 });

@@ -58,17 +58,17 @@ export default function Button({
     if (disabled) return colors.textMuted;
     switch (variant) {
       case "primary":
-      case "cream":
-        return colors.background; // High contrast dark text on vibrant buttons
       case "danger":
       case "secondary":
         return colors.white;
+      case "cream":
+        return colors.background;
       case "outline":
         return colors.primary;
       case "ghost":
         return colors.textSecondary;
       default:
-        return colors.background;
+        return colors.white;
     }
   };
 

@@ -11,11 +11,27 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app
+from services.auth_tokens import issue_token
+
+
+class _AuthedClient:
+    """Test client that sends a session token for user #1 on every request."""
+
+    def __init__(self, client, token):
+        self._client = client
+        self._headers = {"Authorization": f"Bearer {token}"}
+
+    def get(self, *args, **kwargs):
+        return self._client.get(*args, headers=self._headers, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._client.post(*args, headers=self._headers, **kwargs)
 
 
 class TestPaymentRoutes(unittest.TestCase):
     def setUp(self):
-        self.client = app.test_client()
+        self.anon_client = app.test_client()
+        self.client = _AuthedClient(app.test_client(), issue_token(1, "tester"))
 
     @patch("routes.payment_routes.create_payment_order")
     def test_01_create_order_dual_routes(self, mock_create):
@@ -99,6 +115,17 @@ class TestPaymentRoutes(unittest.TestCase):
         data = res.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(len(data["payments"]), 1)
+
+    def test_06_requires_session_and_ownership(self):
+        """Payment endpoints reject anonymous callers and other users' ids."""
+        res = self.anon_client.get("/payments/my-orders/1")
+        self.assertEqual(res.status_code, 401)
+
+        res = self.client.get("/payments/my-orders/2")
+        self.assertEqual(res.status_code, 403)
+
+        res = self.client.post("/payments/razorpay/order", json={"user_id": 2, "equipment_id": 1})
+        self.assertEqual(res.status_code, 403)
 
 
 if __name__ == "__main__":

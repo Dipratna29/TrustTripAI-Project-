@@ -70,6 +70,29 @@ def trigger_sos_alert(data: Dict[str, Any]) -> Dict[str, Any]:
         if res.data:
             incident = res.data[0]
             logger.info("Live SOS emergency registered in Supabase: ID %s for user %s", incident.get("id"), username)
+
+            # Notify user that their SOS distress signal was received by administration
+            if user_id:
+                try:
+                    from services.notification_service import send_notification_to_user
+                    loc_desc = location_label or "live GPS coordinates"
+                    send_notification_to_user(
+                        user_id=int(user_id),
+                        notification_type="sos_dispatched",
+                        notification_data={
+                            "title": "🚨 SOS Emergency Dispatched",
+                            "body": f"Your SOS distress alert (Incident #{incident.get('id')}) has been sent to TrustTrip Administration. Location: {loc_desc}. Stay safe, help is being coordinated.",
+                            "data": {
+                                "type": "emergency",
+                                "screen": "SOS",
+                                "incident_id": incident.get("id"),
+                                "priority": "high"
+                            }
+                        }
+                    )
+                except Exception as n_err:
+                    logger.warning("Could not dispatch SOS confirmation notification: %s", n_err)
+
             return incident
         raise RuntimeError("No data returned from SOS insert")
     except Exception as exc:
@@ -95,7 +118,8 @@ def get_active_user_sos(user_id_or_username: str) -> Optional[Dict[str, Any]]:
             for inc in res.data:
                 if str(inc.get("status", "")).upper() in ("ACTIVE", "ACKNOWLEDGED"):
                     return inc
-            return res.data[0]
+            # Resolved/cancelled incidents are not "active"
+            return None
     except Exception as exc:
         logger.error("Error fetching user SOS status from Supabase: %s", exc)
         raise RuntimeError(f"Could not load SOS status: {exc}")
@@ -103,13 +127,20 @@ def get_active_user_sos(user_id_or_username: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def cancel_user_sos(incident_id: int, username: str) -> bool:
+def cancel_user_sos(incident_id: int, username: str, user_id: Optional[int] = None) -> bool:
     """
-    Allows a traveler to cancel an active SOS incident in Supabase.
+    Allows a traveler to cancel their own active SOS incident in Supabase.
     """
     supabase = get_supabase()
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
+        owner = supabase.table("sos_incidents").select("user_id, username").eq("id", incident_id).limit(1).execute()
+        if not owner.data:
+            return False
+        rec = owner.data[0]
+        if not ((user_id is not None and rec.get("user_id") == user_id) or rec.get("username") == username):
+            logger.warning("SOS cancel rejected: @%s does not own incident %s", username, incident_id)
+            return False
         res = supabase.table("sos_incidents").update({
             "status": "CANCELLED",
             "notes": f"Cancelled by traveler @{username} (False Alarm)",
@@ -175,7 +206,50 @@ def update_sos_incident_admin(
     try:
         res = supabase.table("sos_incidents").update(payload).eq("id", incident_id).execute()
         if res.data:
-            return res.data[0]
+            updated_inc = res.data[0]
+
+            # Notify the traveler about admin response
+            user_id = updated_inc.get("user_id")
+            if not user_id and updated_inc.get("username"):
+                try:
+                    u_res = supabase.table("users").select("user_id").eq("username", updated_inc.get("username")).limit(1).execute()
+                    if u_res.data:
+                        user_id = u_res.data[0].get("user_id")
+                except Exception:
+                    pass
+
+            if user_id:
+                try:
+                    from services.notification_service import send_notification_to_user
+                    if status_upper == "ACKNOWLEDGED":
+                        title = "🚨 SOS Acknowledged by Admin"
+                        body = f"Administration ({admin_name}) has acknowledged your SOS emergency (Incident #{incident_id}). Responders are attending.{f' Note: {notes}' if notes else ''}"
+                    elif status_upper == "RESOLVED":
+                        title = "✅ SOS Emergency Resolved"
+                        body = f"Your SOS emergency (Incident #{incident_id}) has been marked as RESOLVED by Administration.{f' Resolution note: {notes}' if notes else ''} Stay safe!"
+                    else:
+                        title = f"ℹ️ SOS Status: {status_upper}"
+                        body = f"Your SOS incident #{incident_id} status updated to {status_upper}.{f' Note: {notes}' if notes else ''}"
+
+                    send_notification_to_user(
+                        user_id=int(user_id),
+                        notification_type="sos_acknowledged" if status_upper == "ACKNOWLEDGED" else ("sos_resolved" if status_upper == "RESOLVED" else "emergency"),
+                        notification_data={
+                            "title": title,
+                            "body": body,
+                            "data": {
+                                "type": "emergency",
+                                "screen": "SOS",
+                                "incident_id": incident_id,
+                                "status": status_upper,
+                                "priority": "high"
+                            }
+                        }
+                    )
+                except Exception as n_err:
+                    logger.warning("Could not send SOS admin response notification: %s", n_err)
+
+            return updated_inc
         return None
     except Exception as exc:
         logger.error("Supabase update_sos_incident_admin error: %s", exc)

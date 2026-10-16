@@ -1,6 +1,6 @@
 # equipment_routes.py
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from services.equipment_service import (
     fetch_prices,
     create_order,
@@ -9,6 +9,7 @@ from services.equipment_service import (
     fetch_equipment_by_id
 )
 from services.notification_service import send_notification_to_user
+from services.auth_tokens import require_user, owns_user_id, forbidden_response
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +24,25 @@ def get_prices():
 
 
 @equipment_bp.route("/place-order", methods=["POST"])
+@equipment_bp.route("/orders/cod", methods=["POST"])
+@require_user
 def place_order():
-    """Place an equipment purchase order with atomic stock verification."""
+    """Place a Cash-on-Delivery equipment order (price and stock verified server-side)."""
     data = request.get_json(silent=True) or {}
 
     if not data:
         return jsonify({"success": False, "error": "No data received", "message": "No data received"}), 400
 
-    if "user_id" not in data:
-        return jsonify({"success": False, "error": "user_id missing", "message": "User identification required"}), 400
+    # The order always belongs to the signed-in user
+    if "user_id" in data and not owns_user_id(data["user_id"]):
+        return forbidden_response()
+    data["user_id"] = g.user_id
 
     if "equipment_id" not in data:
         return jsonify({"success": False, "error": "equipment_id missing", "message": "Equipment identification required"}), 400
 
     try:
-        order_info = create_order(data)
+        order_info = create_order(data, payment_method="COD")
         order_id = order_info["order_id"]
         user_id = data.get("user_id")
 
@@ -59,7 +64,7 @@ def place_order():
 
         return jsonify({
             "success": True,
-            "message": "Order placed successfully",
+            "message": "Order placed successfully. Pay in cash when your safety gear is delivered.",
             "order_id": order_id,
             "data": order_info
         }), 200
@@ -82,8 +87,11 @@ def place_order():
 
 
 @equipment_bp.route("/user-orders/<int:user_id>", methods=["GET"])
+@require_user
 def get_user_orders(user_id):
     """Retrieve order history for a specific user."""
+    if not owns_user_id(user_id):
+        return forbidden_response()
     try:
         orders = fetch_user_orders(user_id)
         return jsonify(orders)

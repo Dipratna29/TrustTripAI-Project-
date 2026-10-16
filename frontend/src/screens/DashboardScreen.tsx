@@ -6,16 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Dimensions,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import api from "../config/api";
 import CosmicBackground from "../components/common/CosmicBackground";
-import SurfaceCard from "../components/common/SurfaceCard";
-import ScreenHeader from "../components/common/ScreenHeader";
 import AppIcon from "../components/common/AppIcon";
-import { StatusBadge } from "../components/common/StatusIndicator";
 import CustomBottomNav from "../components/common/CustomBottomNav";
 import { colors, typography, radius, spacing } from "../theme";
 
@@ -73,35 +69,24 @@ export default function DashboardScreen() {
     }
   };
 
-  const analytics = useMemo(() => {
-    const total = complaints.length;
-    const norm = (s?: string) => (s || "pending").toLowerCase();
-    const resolved = complaints.filter((c) => norm(c.status).includes("resolved")).length;
-    const rejected = complaints.filter((c) => norm(c.status).includes("reject")).length;
-    const pending = total - resolved - rejected;
-    const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
-    return {
-      total,
-      resolved,
-      pending,
-      rejected,
-      resolvedPct: pct(resolved),
-      pendingPct: pct(pending),
-      criticalCount: complaints.filter((c) => norm(c.status).includes("critical")).length,
-    };
-  }, [complaints]);
+  const hasActivity = complaints.length > 0 || orders.length > 0 || bookedGuides.length > 0;
 
   return (
-    <CosmicBackground>
-      <ScreenHeader
-        title="Activity & Explorer"
-        subtitle="Traveler records, gear & safety history"
-        rightAction={
-          <TouchableOpacity onPress={loadAll} style={styles.headerRefreshBtn}>
-            <AppIcon name="refresh" size={18} color={colors.primary} />
-          </TouchableOpacity>
-        }
-      />
+    <CosmicBackground variant="dark">
+      {/* HEADER */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Activity & Explorer</Text>
+          <Text style={styles.headerSubtitle}>Your travel records</Text>
+        </View>
+        <TouchableOpacity
+          onPress={loadAll}
+          style={styles.headerRefreshBtn}
+          activeOpacity={0.8}
+        >
+          <AppIcon name="refresh-outline" size={18} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -115,271 +100,291 @@ export default function DashboardScreen() {
           />
         }
       >
-        {/* OVERVIEW METRIC TILES */}
+        {/* TOP 3 SUMMARY TILES */}
         <View style={styles.overviewGrid}>
-          <SurfaceCard style={styles.metricCard} onPress={() => navigation.navigate("MyComplaints")}>
-            <View style={[styles.metricIconWrap, { backgroundColor: `${colors.primary}18` }]}>
-              <AppIcon name="document-text-outline" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.metricLabel}>Complaints</Text>
-            <Text style={styles.metricValue}>{complaints.length}</Text>
-          </SurfaceCard>
+          {/* Reports */}
+          <TouchableOpacity
+            style={styles.summaryCard}
+            onPress={() => navigation.navigate("MyComplaints")}
+            activeOpacity={0.8}
+          >
+            <AppIcon name="document-text-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.summaryLabel}>Reports</Text>
+            <Text style={styles.summaryValue}>{complaints.length}</Text>
+          </TouchableOpacity>
 
-          <SurfaceCard style={styles.metricCard} onPress={() => navigation.navigate("MyOrders")}>
-            <View style={[styles.metricIconWrap, { backgroundColor: `${colors.cream}18` }]}>
-              <AppIcon name="cube-outline" size={20} color={colors.cream} />
-            </View>
-            <Text style={styles.metricLabel}>Gear Orders</Text>
-            <Text style={[styles.metricValue, { color: colors.cream }]}>{orders.length}</Text>
-          </SurfaceCard>
+          {/* Orders */}
+          <TouchableOpacity
+            style={styles.summaryCard}
+            onPress={() => navigation.navigate("MyOrders")}
+            activeOpacity={0.8}
+          >
+            <AppIcon name="cube-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.summaryLabel}>Orders</Text>
+            <Text style={styles.summaryValue}>{orders.length}</Text>
+          </TouchableOpacity>
 
-          <SurfaceCard style={styles.metricCard} onPress={() => navigation.navigate("Guide")}>
-            <View style={[styles.metricIconWrap, { backgroundColor: `${colors.primary}18` }]}>
-              <AppIcon name="compass-outline" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.metricLabel}>Guides</Text>
-            <Text style={styles.metricValue}>{bookedGuides.length}</Text>
-          </SurfaceCard>
-        </View>
-
-        {/* COMPLAINT RESOLUTION CARD */}
-        <SurfaceCard style={styles.sectionCard} variant="elevated">
-          <View style={styles.cardHeaderRow}>
-            <View>
-              <Text style={typography.h4}>Resolution Performance</Text>
-              <Text style={styles.cardHeaderSub}>Monthly complaint resolution rate</Text>
-            </View>
-            <StatusBadge
-              label={`${analytics.resolvedPct}% Done`}
-              status={analytics.resolvedPct > 50 ? "ready" : "moderate"}
-            />
-          </View>
-
-          {/* PROGRESS BARS */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressRow}>
-              <View style={styles.progressLabelCol}>
-                <Text style={styles.progressName}>Resolved</Text>
-                <Text style={styles.progressCount}>{analytics.resolved} of {analytics.total}</Text>
-              </View>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${analytics.resolvedPct}%`, backgroundColor: colors.primary }]} />
-              </View>
-            </View>
-
-            <View style={styles.progressRow}>
-              <View style={styles.progressLabelCol}>
-                <Text style={styles.progressName}>In Progress / Pending</Text>
-                <Text style={styles.progressCount}>{analytics.pending} of {analytics.total}</Text>
-              </View>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${analytics.pendingPct}%`, backgroundColor: colors.cream }]} />
-              </View>
-            </View>
-          </View>
-        </SurfaceCard>
-
-        {/* RECENT ORDERS */}
-        <View style={styles.sectionHeader}>
-          <Text style={typography.h3}>Recent Equipment Orders</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("MyOrders")}>
-            <Text style={styles.viewAllLink}>View All</Text>
+          {/* Guides */}
+          <TouchableOpacity
+            style={styles.summaryCard}
+            onPress={() => navigation.navigate("Guide")}
+            activeOpacity={0.8}
+          >
+            <AppIcon name="compass-outline" size={18} color={colors.textSecondary} />
+            <Text style={styles.summaryLabel}>Guides</Text>
+            <Text style={styles.summaryValue}>{bookedGuides.length}</Text>
           </TouchableOpacity>
         </View>
 
-        {orders.length === 0 ? (
-          <SurfaceCard style={styles.emptyCard}>
-            <AppIcon name="cube-outline" size={24} color={colors.textMuted} />
-            <Text style={styles.emptyText}>No equipment orders yet</Text>
-          </SurfaceCard>
-        ) : (
-          orders.slice(0, 3).map((item) => (
-            <SurfaceCard key={item.id} style={styles.orderItemCard} onPress={() => navigation.navigate("MyOrders")}>
-              <View style={styles.orderIconWrap}>
-                <AppIcon name="cube" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={typography.h4}>{item.name}</Text>
-                <Text style={styles.itemMeta}>Total: ₹{Number(item.total_price).toFixed(2)}</Text>
-              </View>
-              <StatusBadge
-                label={item.status || "PAID"}
-                status={item.status === "PAID" ? "ready" : "moderate"}
-              />
-            </SurfaceCard>
-          ))
-        )}
+        {/* RECENT ACTIVITY SECTION */}
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
 
-        {/* RECENT COMPLAINTS */}
-        <View style={styles.sectionHeader}>
-          <Text style={typography.h3}>Recent Reports</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("MyComplaints")}>
-            <Text style={styles.viewAllLink}>View All</Text>
-          </TouchableOpacity>
-        </View>
-
-        {complaints.length === 0 ? (
-          <SurfaceCard style={styles.emptyCard}>
-            <AppIcon name="document-text-outline" size={24} color={colors.textMuted} />
-            <Text style={styles.emptyText}>No reports filed</Text>
-          </SurfaceCard>
+        {!hasActivity ? (
+          /* EMPTY STATE CARD (EXACT MOCKUP MATCH) */
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconCircle}>
+              <AppIcon name="document-text-outline" size={32} color="#94A3B8" />
+            </View>
+            <Text style={styles.emptyTitle}>No recent activity</Text>
+            <Text style={styles.emptySub}>Your travel activities will appear here.</Text>
+            <TouchableOpacity
+              style={styles.exploreBtn}
+              onPress={() => navigation.navigate("Home")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.exploreBtnText}>Explore Services</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
-          complaints.slice(0, 3).map((item) => (
-            <SurfaceCard key={item.id} style={styles.orderItemCard} onPress={() => navigation.navigate("MyComplaints")}>
-              <View style={styles.complaintIconWrap}>
-                <AppIcon name="chatbubble-ellipses-outline" size={20} color={colors.cream} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={typography.h4}>{item.category}</Text>
-                <Text style={styles.itemMeta}>Report #{item.id}</Text>
-              </View>
-              <StatusBadge
-                label={item.status || "PENDING"}
-                status={item.status?.toLowerCase().includes("resolved") ? "ready" : "moderate"}
-              />
-            </SurfaceCard>
-          ))
+          /* ACTIVE LIST OF RECORDS */
+          <View style={styles.activityListCard}>
+            {complaints.slice(0, 3).map((item) => (
+              <TouchableOpacity
+                key={`c-${item.id}`}
+                style={styles.activityItem}
+                onPress={() => navigation.navigate("MyComplaints")}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.itemIconCircle, { backgroundColor: "rgba(0, 194, 146, 0.12)" }]}>
+                  <AppIcon name="document-text" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.itemTitle}>{item.category || "Safety Report"}</Text>
+                  <Text style={styles.itemSub}>Report #{item.id}</Text>
+                </View>
+                <View style={[styles.itemBadge, { backgroundColor: "rgba(0, 194, 146, 0.15)" }]}>
+                  <Text style={[styles.itemBadgeText, { color: colors.primary }]}>
+                    {item.status || "Pending"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {orders.slice(0, 3).map((item) => (
+              <TouchableOpacity
+                key={`o-${item.id}`}
+                style={styles.activityItem}
+                onPress={() => navigation.navigate("MyOrders")}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.itemIconCircle, { backgroundColor: "rgba(245, 158, 11, 0.12)" }]}>
+                  <AppIcon name="cube" size={18} color={colors.warning} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.itemTitle}>{item.name}</Text>
+                  <Text style={styles.itemSub}>Order #{item.id} • ₹{item.total_price}</Text>
+                </View>
+                <View style={[styles.itemBadge, { backgroundColor: "rgba(245, 158, 11, 0.15)" }]}>
+                  <Text style={[styles.itemBadgeText, { color: colors.warning }]}>
+                    {item.status || "Paid"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={styles.exploreBtnInner}
+              onPress={() => navigation.navigate("Home")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.exploreBtnText}>Explore Services</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
 
-      {/* Pinned Bottom Nav */}
-      <CustomBottomNav activeTab="MyComplaints" navigation={navigation} />
+      {/* BOTTOM NAV */}
+      <CustomBottomNav activeTab="Activity" navigation={navigation} />
     </CosmicBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   headerRefreshBtn: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0, 194, 146, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(0, 194, 146, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
-    paddingHorizontal: spacing.screenPadding,
+    paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   overviewGrid: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 24,
   },
-  metricCard: {
+  summaryCard: {
     flex: 1,
-    padding: 14,
-    alignItems: "center",
-  },
-  metricIconWrap: {
-    width: 40,
-    height: 40,
+    backgroundColor: "#FFFFFF",
     borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
   },
-  metricLabel: {
-    ...typography.caption,
-    color: colors.textMuted,
+  summaryLabel: {
     fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 6,
+    fontWeight: "500",
   },
-  metricValue: {
-    ...typography.h3,
-    color: colors.primary,
+  summaryValue: {
     fontSize: 18,
-    marginTop: 2,
-  },
-  sectionCard: {
-    marginBottom: 20,
-    padding: 18,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  cardHeaderSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  progressSection: {
-    gap: 14,
-  },
-  progressRow: {
-    gap: 6,
-  },
-  progressLabelCol: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  progressName: {
-    ...typography.caption,
-    color: colors.textPrimary,
     fontWeight: "700",
+    color: colors.textPrimary,
+    marginTop: 2,
   },
-  progressCount: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontSize: 11,
-  },
-  progressBarBg: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.textPrimary,
     marginBottom: 12,
   },
-  viewAllLink: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
   emptyCard: {
-    padding: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  emptyIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 14,
   },
-  emptyText: {
-    ...typography.caption,
-    color: colors.textMuted,
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 6,
   },
-  orderItemCard: {
+  emptySub: {
+    fontSize: 13,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 22,
+  },
+  exploreBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
+    width: "100%",
+    alignItems: "center",
+  },
+  exploreBtnInner: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    alignItems: "center",
+  },
+  exploreBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.white,
+  },
+  activityListCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    paddingVertical: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  activityItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
-    marginBottom: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E2E8F0",
   },
-  orderIconWrap: {
+  itemIconCircle: {
     width: 38,
     height: 38,
-    borderRadius: 12,
-    backgroundColor: `${colors.primary}18`,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
   },
-  complaintIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: `${colors.cream}18`,
-    alignItems: "center",
-    justifyContent: "center",
+  itemTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0F172A",
   },
-  itemMeta: {
-    ...typography.caption,
-    color: colors.textSecondary,
+  itemSub: {
+    fontSize: 12,
+    color: "#64748B",
     marginTop: 2,
   },
+  itemBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  itemBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
 });

@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from services.admin_service import admin_required
 from services.crowd_service import (
     get_locations_with_counts,
     record_user_location,
@@ -27,8 +28,8 @@ def location_update():
     try:
         record_user_location(user_id, float(lat), float(lon))
         return jsonify({"success": True, "message": "Location recorded"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+    except Exception:
+        return jsonify({"success": False, "message": "Could not record location"}), 500
 
 
 @crowd_bp.route("/crowd/history/<int:location_id>", methods=["GET"])
@@ -41,15 +42,16 @@ def history(location_id):
 
 
 
-@crowd_bp.route('/crowd/settings', methods=['GET', 'PUT'])
+@crowd_bp.route('/crowd/settings', methods=['GET'])
 def crowd_settings():
-    from flask import request
-    if request.method == 'GET':
-        # return settings
-        from services.crowd_service import get_update_interval_minutes
-        return jsonify({'update_interval_minutes': get_update_interval_minutes()})
+    from services.crowd_service import get_update_interval_minutes
+    return jsonify({'update_interval_minutes': get_update_interval_minutes()})
 
-    # PUT: update settings
+
+@crowd_bp.route('/crowd/settings', methods=['PUT'])
+@admin_required()
+def update_crowd_settings():
+    # Admin-only: previously anyone could change crowd monitoring settings
     data = request.get_json(silent=True) or {}
     key = data.get('key')
     value = data.get('value')

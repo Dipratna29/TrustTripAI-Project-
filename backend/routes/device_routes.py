@@ -3,7 +3,8 @@ Device Management Routes for Push Notifications
 Handles device registration, updates, and deactivation.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
+from services.auth_tokens import authenticate_request
 from services.notification_service import (
     register_device,
     deactivate_device,
@@ -11,6 +12,25 @@ from services.notification_service import (
 )
 
 device_bp = Blueprint("device", __name__)
+
+
+@device_bp.before_request
+def _require_session():
+    # Device tokens are bound to the signed-in user so nobody can hijack another user's pushes
+    error = authenticate_request()
+    if error:
+        return error
+    data = request.get_json(silent=True)
+    if isinstance(data, dict) and "user_id" in data:
+        try:
+            if int(data["user_id"]) != g.user_id:
+                return jsonify({"success": False, "error": "forbidden", "message": "Not allowed"}), 403
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "Invalid user_id"}), 400
+    view_user = (request.view_args or {}).get("user_id")
+    if view_user is not None and int(view_user) != g.user_id:
+        return jsonify({"success": False, "error": "forbidden", "message": "Not allowed"}), 403
+    return None
 
 
 @device_bp.route("/device", methods=["POST"])

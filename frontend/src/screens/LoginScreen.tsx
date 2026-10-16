@@ -14,13 +14,11 @@ import {
   ActivityIndicator,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import api from "../config/api";
 import { send_notification_to_user_welcome } from "../services/pushNotificationService";
 import { useAuth } from "../context/AuthContext";
 import CosmicBackground from "../components/common/CosmicBackground";
-import SurfaceCard from "../components/common/SurfaceCard";
 import AppIcon from "../components/common/AppIcon";
-import { colors, typography, radius, shadows, spacing } from "../theme";
+import { radius } from "../theme";
 
 interface Props {
   navigation: {
@@ -58,7 +56,6 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
       const result = await authLogin(username, password);
 
       if (result.success) {
-        // Welcome notification for first-time login
         try {
           const userRaw = await AsyncStorage.getItem("user");
           if (userRaw) {
@@ -96,7 +93,7 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
   };
 
   return (
-    <CosmicBackground>
+    <CosmicBackground variant="light">
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -107,27 +104,24 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* BRAND HERO HEADER */}
-            <View style={styles.brandHero}>
-              <View style={styles.logoIconCircle}>
-                <AppIcon name="shield-checkmark" size={36} color={colors.primary} />
+            {/* BRAND HEADER */}
+            <View style={styles.brandContainer}>
+              <View style={styles.brandIconWrap}>
+                <AppIcon name="shield-checkmark" size={32} color="#00C292" />
               </View>
               <Text style={styles.brandTitle}>
-                Trust<Text style={{ color: colors.primary }}>Trip</Text>
+                Trust<Text style={{ color: "#00C292" }}>Trip</Text>
               </Text>
-              <Text style={styles.brandSubtitle}>Travel Safe. Travel Smart.</Text>
+              <Text style={styles.brandSubtitle}>Travel Safe, Travel Smart.</Text>
             </View>
 
-            {/* FORM CARD */}
-            <SurfaceCard style={styles.formCard} variant="elevated">
+            {/* WHITE FORM CARD */}
+            <View style={styles.card}>
               <Text style={styles.welcomeTitle}>Welcome back</Text>
-              <Text style={styles.welcomeSubtitle}>
-                Sign in to access your travel guardian & verified safety tools
-              </Text>
+              <Text style={styles.welcomeSubtitle}>Sign in to your account</Text>
 
               {/* USERNAME INPUT */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Username or Email</Text>
                 <View
                   style={[
                     styles.inputWrapper,
@@ -135,15 +129,15 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
                   ]}
                 >
                   <AppIcon
-                    name="person-outline"
+                    name="mail-outline"
                     size={18}
-                    color={focusedField === "username" ? colors.primary : colors.textMuted}
+                    color={focusedField === "username" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter your username"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Email or Username"
+                    placeholderTextColor="#94A3B8"
                     value={username}
                     onChangeText={setUsername}
                     autoCapitalize="none"
@@ -156,15 +150,6 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
 
               {/* PASSWORD INPUT */}
               <View style={styles.inputGroup}>
-                <View style={styles.passwordLabelRow}>
-                  <Text style={styles.inputLabel}>Password</Text>
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate("ForgotPassword")}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
-                  </TouchableOpacity>
-                </View>
                 <View
                   style={[
                     styles.inputWrapper,
@@ -174,13 +159,13 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
                   <AppIcon
                     name="lock-closed-outline"
                     size={18}
-                    color={focusedField === "password" ? colors.primary : colors.textMuted}
+                    color={focusedField === "password" ? "#00C292" : "#94A3B8"}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter your password"
-                    placeholderTextColor={colors.textMuted}
+                    placeholder="Password"
+                    placeholderTextColor="#94A3B8"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -197,10 +182,18 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
                     <AppIcon
                       name={showPassword ? "eye-off-outline" : "eye-outline"}
                       size={18}
-                      color={colors.textMuted}
+                      color="#94A3B8"
                     />
                   </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("ForgotPassword")}
+                  activeOpacity={0.7}
+                  style={styles.forgotBtn}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                </TouchableOpacity>
               </View>
 
               {/* PRIMARY SIGN IN BUTTON */}
@@ -211,29 +204,35 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
                 activeOpacity={0.85}
               >
                 {loading ? (
-                  <View style={styles.btnLoadingRow}>
-                    <ActivityIndicator size="small" color={colors.background} />
-                    <Text style={styles.primaryBtnText}>Signing in...</Text>
-                  </View>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Text style={styles.primaryBtnText}>Sign In</Text>
                 )}
               </TouchableOpacity>
 
-              {/* REGISTER LINK */}
+              {/* SOCIAL DIVIDER */}
+              <View style={styles.socialDividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.socialDividerText}>Or continue with</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {/* SOCIAL BUTTONS */}
+              <View style={styles.socialButtonsRow}>
+                <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+                  <AppIcon name="logo-google" size={18} color="#EA4335" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.socialBtn} activeOpacity={0.8}>
+                  <AppIcon name="logo-apple" size={20} color="#0F172A" />
+                </TouchableOpacity>
+              </View>
+
+              {/* REGISTER PROMPT */}
               <View style={styles.registerRow}>
-                <Text style={styles.registerPrompt}>Don't have an account?</Text>
+                <Text style={styles.registerPrompt}>Don't have an account? </Text>
                 <TouchableOpacity onPress={() => navigation.navigate("Register")}>
                   <Text style={styles.registerLink}>Sign Up</Text>
                 </TouchableOpacity>
-              </View>
-            </SurfaceCard>
-
-            {/* TRUST FOOTER */}
-            <View style={styles.footerContainer}>
-              <View style={styles.footerShieldRow}>
-                <AppIcon name="shield-outline" size={14} color={colors.textMuted} />
-                <Text style={styles.footerText}>Protected by TrustTrip Safety Guardian</Text>
               </View>
             </View>
           </ScrollView>
@@ -245,149 +244,162 @@ export default function LoginScreen({ navigation, loginUser }: Props) {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: 36,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 28,
   },
-  brandHero: {
+  brandContainer: {
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 24,
   },
-  logoIconCircle: {
-    width: 64,
-    height: 64,
+  brandIconWrap: {
+    width: 60,
+    height: 60,
     borderRadius: 20,
-    backgroundColor: colors.primaryGlow,
-    borderWidth: 1.5,
-    borderColor: colors.primaryBorder,
+    backgroundColor: "#E6FBF5",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   brandTitle: {
-    fontFamily: typography.displayLarge.fontFamily,
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "900",
-    color: colors.white,
+    color: "#0F172A",
     letterSpacing: -0.5,
   },
   brandSubtitle: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-    marginTop: 4,
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "600",
+    marginTop: 2,
   },
-  formCard: {
-    padding: 22,
-    borderColor: colors.border,
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
   },
   welcomeTitle: {
-    ...typography.h2,
     fontSize: 22,
-    color: colors.white,
+    fontWeight: "800",
+    color: "#0F172A",
   },
   welcomeSubtitle: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
-    marginTop: 6,
-    marginBottom: 22,
-    lineHeight: 20,
+    fontSize: 13,
+    color: "#64748B",
+    marginTop: 4,
+    marginBottom: 20,
   },
   inputGroup: {
     marginBottom: 16,
   },
-  inputLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  passwordLabelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  forgotPasswordLink: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.input,
+    borderColor: "#E2E8F0",
+    borderRadius: radius.card,
     paddingHorizontal: 14,
-    minHeight: 50,
+    height: 52,
   },
   inputWrapperFocused: {
-    borderColor: colors.primary,
+    borderColor: "#00C292",
+    backgroundColor: "#FFFFFF",
   },
   inputIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    color: colors.textPrimary,
-    fontSize: 15,
-    paddingVertical: 12,
+    fontSize: 14,
+    color: "#0F172A",
+    fontWeight: "500",
   },
   eyeBtn: {
     padding: 6,
   },
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginTop: 8,
+  },
+  forgotPasswordText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#00C292",
+  },
   primaryBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#00C292",
     borderRadius: radius.button,
-    paddingVertical: 15,
+    height: 52,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
-    ...shadows.glowPrimary,
+    marginTop: 6,
+    shadowColor: "#00C292",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   btnDisabled: {
     opacity: 0.65,
   },
   primaryBtnText: {
-    fontFamily: typography.button.fontFamily,
-    color: colors.background,
     fontSize: 16,
     fontWeight: "800",
+    color: "#FFFFFF",
   },
-  btnLoadingRow: {
+  socialDividerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#E2E8F0",
+  },
+  socialDividerText: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontWeight: "600",
+    marginHorizontal: 12,
+  },
+  socialButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 20,
+  },
+  socialBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
   },
   registerRow: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "center",
-    marginTop: 20,
-    gap: 6,
+    alignItems: "center",
   },
   registerPrompt: {
-    ...typography.bodySm,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "500",
   },
   registerLink: {
-    ...typography.bodySm,
-    color: colors.primary,
+    fontSize: 13,
     fontWeight: "800",
-  },
-  footerContainer: {
-    alignItems: "center",
-    marginTop: 32,
-  },
-  footerShieldRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  footerText: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textMuted,
+    color: "#00C292",
   },
 });

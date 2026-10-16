@@ -93,7 +93,7 @@ export default function MyComplaintsScreen() {
             style={styles.newReportBtn}
             onPress={() => navigation.navigate("Complaint")}
           >
-            <AppIcon name="add" size={16} color={colors.background} />
+            <AppIcon name="add" size={16} color={colors.white} />
             <Text style={styles.newReportBtnText}>New</Text>
           </TouchableOpacity>
         }
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
   newReportBtnText: {
     fontSize: 12,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
   filterRow: {
     flexDirection: "row",
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   filterTextActive: {
-    color: colors.background,
+    color: colors.white,
     fontWeight: "800",
   },
   listContent: {
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 8,
   },
   emptyDesc: {
@@ -303,6 +303,6 @@ const styles = StyleSheet.create({
   fileReportBtnText: {
     ...typography.caption,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
 });

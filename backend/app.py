@@ -29,7 +29,16 @@ logging.basicConfig(level=getattr(logging, Config.LOG_LEVEL, logging.INFO), form
 if Config.ENVIRONMENT in {"production", "staging"}:
     Config.validate()
 app = Flask(__name__)
-CORS(app, origins=os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else "*")
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # reject request bodies over 5 MB (profile photos are <= 2 MB)
+
+if Config.TRUST_PROXY:
+    # Render/Railway/Fly terminate TLS at a proxy; trust its X-Forwarded-* headers
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+# The mobile app is not subject to CORS; restrict browser origins (admin panel) when configured
+CORS(app, origins=_cors_origins or "*")
 
 # Register all Blueprints
 app.register_blueprint(auth_bp)
@@ -56,6 +65,22 @@ def index():
         "app": "TrustTrip API",
         "version": "1.0.0"
     })
+
+@app.errorhandler(413)
+def payload_too_large(_err):
+    return jsonify({"success": False, "message": "Upload is too large"}), 413
+
+
+@app.errorhandler(404)
+def not_found(_err):
+    return jsonify({"success": False, "message": "Not found"}), 404
+
+
+@app.errorhandler(500)
+def server_error(_err):
+    logging.getLogger(__name__).exception("Unhandled server error")
+    return jsonify({"success": False, "message": "Internal server error"}), 500
+
 
 @app.route("/health", methods=["GET"])
 def health():

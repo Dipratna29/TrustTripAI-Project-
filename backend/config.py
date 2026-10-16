@@ -1,3 +1,4 @@
+import logging
 import os
 from dotenv import load_dotenv
 
@@ -26,21 +27,25 @@ class Config:
 
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
     GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+    MYMEMORY_EMAIL = os.environ.get("MYMEMORY_EMAIL", "")
 
     @classmethod
     def validate(cls):
+        # Razorpay is optional: without keys online payment returns 503 and Cash on Delivery still works.
         required = {
             "SECRET_KEY": cls.SECRET_KEY,
             "SUPABASE_URL": cls.SUPABASE_URL,
             "SUPABASE_SERVICE_ROLE_KEY": cls.SUPABASE_SERVICE_ROLE_KEY,
-            "RAZORPAY_KEY_ID": cls.RAZORPAY_KEY_ID,
-            "RAZORPAY_KEY_SECRET": cls.RAZORPAY_KEY_SECRET
         }
         missing = [name for name, value in required.items() if not value]
         if cls.RAZORPAY_MODE not in {"test", "live"}:
             raise RuntimeError("RAZORPAY_MODE must be 'test' or 'live'")
         if cls.ENVIRONMENT in {"production", "staging"} and missing:
             raise RuntimeError(f"Missing required production configuration: {', '.join(missing)}")
+        if cls.ENVIRONMENT in {"production", "staging"} and len(cls.SECRET_KEY) < 32:
+            raise RuntimeError("SECRET_KEY must be a random string of at least 32 characters")
         if cls.ENVIRONMENT == "production" and cls.RAZORPAY_MODE != "live":
-            raise RuntimeError("Production requires explicit live Razorpay mode")
+            logging.getLogger(__name__).warning(
+                "Running in production with Razorpay TEST mode - no real money will be collected"
+            )
         return missing

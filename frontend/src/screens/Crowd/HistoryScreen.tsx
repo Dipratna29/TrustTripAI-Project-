@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   tabTextActive: {
-    color: colors.background,
+    color: colors.white,
   },
   summaryCard: {
     padding: 18,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     ...typography.h4,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 4,
   },
   sectionHeader: {

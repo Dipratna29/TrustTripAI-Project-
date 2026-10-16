@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.screenPadding,
     paddingVertical: 14,
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
   },
   leftRow: {
     flexDirection: "row",

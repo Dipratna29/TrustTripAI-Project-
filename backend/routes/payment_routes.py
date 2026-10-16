@@ -1,7 +1,8 @@
 import logging
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from config import Config
+from services.auth_tokens import require_user, owns_user_id, forbidden_response
 from services.payment_service import (
     PaymentError,
     create_payment_order,
@@ -22,6 +23,15 @@ def _json():
     return request.get_json(silent=True) or {}
 
 
+def _owned_json():
+    """Request body bound to the signed-in user; returns (data, error_response)."""
+    data = _json()
+    if "user_id" in data and not owns_user_id(data["user_id"]):
+        return None, forbidden_response()
+    data["user_id"] = g.user_id
+    return data, None
+
+
 @payment_bp.errorhandler(PaymentError)
 def handle_payment_error(error):
     logger.warning("Payment error [%d]: %s", error.status, str(error))
@@ -37,12 +47,15 @@ def _require_https():
 # 1. CREATE PAYMENT ORDER (supports both /payments/razorpay/order and /api/payments/create-order)
 @payment_bp.route("/payments/razorpay/order", methods=["POST"])
 @payment_bp.route("/api/payments/create-order", methods=["POST"])
+@require_user
 def create_order():
     secure_error = _require_https()
     if secure_error:
         return secure_error
     try:
-        data = _json()
+        data, err = _owned_json()
+        if err:
+            return err
         result = create_payment_order(data)
         return jsonify(result), 201
     except PaymentError as error:
@@ -55,12 +68,15 @@ def create_order():
 # 2. VERIFY PAYMENT (supports both /payments/razorpay/verify and /api/payments/verify)
 @payment_bp.route("/payments/razorpay/verify", methods=["POST"])
 @payment_bp.route("/api/payments/verify", methods=["POST"])
+@require_user
 def verify_order():
     secure_error = _require_https()
     if secure_error:
         return secure_error
     try:
-        data = _json()
+        data, err = _owned_json()
+        if err:
+            return err
         result = verify_payment(data)
         return jsonify(result), 200
     except PaymentError as error:
@@ -73,9 +89,12 @@ def verify_order():
 # 3. PAYMENT FAILURE REPORTING
 @payment_bp.route("/payments/razorpay/failure", methods=["POST"])
 @payment_bp.route("/api/payments/failure", methods=["POST"])
+@require_user
 def failure():
     try:
-        data = _json()
+        data, err = _owned_json()
+        if err:
+            return err
         result = mark_payment_failed(data)
         return jsonify(result), 200
     except PaymentError as error:
@@ -106,10 +125,10 @@ def webhook():
 # 5. STATUS INQUIRY (for network interruption or pending states)
 @payment_bp.route("/payments/status/<order_id>", methods=["GET"])
 @payment_bp.route("/api/payments/status/<order_id>", methods=["GET"])
+@require_user
 def check_status(order_id):
-    user_id = request.args.get("user_id", type=int)
     try:
-        result = get_payment_status(order_id, user_id=user_id)
+        result = get_payment_status(order_id, user_id=g.user_id)
         return jsonify(result), 200
     except PaymentError as error:
         return handle_payment_error(error)
@@ -121,7 +140,10 @@ def check_status(order_id):
 # 6. USER PAYMENT HISTORY
 @payment_bp.route("/payments/my-orders/<int:user_id>", methods=["GET"])
 @payment_bp.route("/api/payments/my-orders/<int:user_id>", methods=["GET"])
+@require_user
 def user_payments(user_id):
+    if not owns_user_id(user_id):
+        return forbidden_response()
     try:
         payments = get_user_payments(user_id)
         return jsonify({"success": True, "payments": payments}), 200

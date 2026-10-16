@@ -521,6 +521,36 @@ def update_user_status(user_id: int, status: str, reason: str, admin_user: Dict[
         description=f"User #{user_id} status updated to {status}. Reason: {reason or 'None'}",
         details={"status": status, "reason": reason}
     )
+
+    # Notify user of account status update
+    try:
+        status_clean = str(status).upper()
+        if status_clean == "ACTIVE":
+            notif_title = "✅ Account Activated"
+            notif_body = "Your TrustTrip account has been activated. You now have full access to all travel guardian features."
+        elif status_clean == "SUSPENDED":
+            notif_title = "⚠️ Account Suspended"
+            notif_body = f"Your TrustTrip account has been suspended by administration.{f' Reason: {reason}' if reason else ''}"
+        else:
+            notif_title = f"ℹ️ Account Status: {status_clean}"
+            notif_body = f"Your account status has been updated to {status_clean}."
+
+        send_notification_to_user(
+            user_id=int(user_id),
+            notification_type="account_status_changed",
+            notification_data={
+                "title": notif_title,
+                "body": notif_body,
+                "data": {
+                    "type": "system",
+                    "screen": "Profile",
+                    "status": status_clean
+                }
+            }
+        )
+    except Exception as n_err:
+        logger.warning("Could not dispatch user status notification: %s", n_err)
+
     return True
 
 
@@ -993,6 +1023,40 @@ def update_complaint(
         description=f"Updated complaint #{complaint_id} status to '{payload.get('status')}'",
         details=payload
     )
+
+    # Notify traveler about complaint status update and official admin response
+    try:
+        comp_user_id = complaint_rec.get("user_id")
+        comp_username = complaint_rec.get("username")
+        if not comp_user_id and comp_username:
+            u_res = supabase.table("users").select("user_id").eq("username", comp_username).limit(1).execute()
+            if u_res.data:
+                comp_user_id = u_res.data[0].get("user_id")
+
+        if comp_user_id:
+            new_status = payload.get("status") or complaint_rec.get("status") or "Updated"
+            admin_resp = payload.get("admin_response") or complaint_rec.get("admin_response")
+            body_text = f"Administration has updated your complaint #{complaint_id} to '{new_status}'."
+            if admin_resp:
+                body_text += f" Response: \"{admin_resp}\""
+
+            send_notification_to_user(
+                user_id=int(comp_user_id),
+                notification_type="complaint_updated",
+                notification_data={
+                    "title": f"📋 Complaint #{complaint_id} Updated ({new_status})",
+                    "body": body_text,
+                    "data": {
+                        "type": "complaint",
+                        "screen": "MyComplaints",
+                        "complaint_id": complaint_id,
+                        "status": new_status
+                    }
+                }
+            )
+    except Exception as n_err:
+        logger.warning("Could not send complaint update notification to user: %s", n_err)
+
     return complaint_rec
 
 
@@ -1099,6 +1163,49 @@ def update_sos_status(
         description=f"SOS incident #{incident_id} status updated to '{status}' by {admin_user.get('name')}",
         details=payload
     )
+
+    # Dispatch notification to the traveler
+    try:
+        user_id = updated_record.get("user_id")
+        username = updated_record.get("username")
+        if not user_id and username:
+            u_res = supabase.table("users").select("user_id").eq("username", username).limit(1).execute()
+            if u_res.data:
+                user_id = u_res.data[0].get("user_id")
+
+        if user_id:
+            admin_name = admin_user.get("name") or "Administration"
+            if status == "ACKNOWLEDGED":
+                title = "🚨 SOS Acknowledged by Admin"
+                body = f"Administration ({admin_name}) has acknowledged your SOS emergency (Incident #{incident_id}). Response teams are coordinating.{f' Note: {notes}' if notes else ''}"
+            elif status == "RESOLVED":
+                title = "✅ SOS Emergency Resolved"
+                body = f"Your SOS emergency (Incident #{incident_id}) has been marked as RESOLVED by Administration.{f' Resolution note: {notes}' if notes else ''} Stay safe!"
+            elif status == "CANCELLED":
+                title = "ℹ️ SOS Incident Cancelled"
+                body = f"SOS Incident #{incident_id} has been marked as Cancelled.{f' Reason: {notes}' if notes else ''}"
+            else:
+                title = f"ℹ️ SOS Status Updated ({status})"
+                body = f"Your SOS incident #{incident_id} status is now {status}.{f' Note: {notes}' if notes else ''}"
+
+            send_notification_to_user(
+                user_id=int(user_id),
+                notification_type="sos_acknowledged" if status == "ACKNOWLEDGED" else ("sos_resolved" if status == "RESOLVED" else "emergency"),
+                notification_data={
+                    "title": title,
+                    "body": body,
+                    "data": {
+                        "type": "emergency",
+                        "screen": "SOS",
+                        "incident_id": incident_id,
+                        "status": status,
+                        "priority": "high"
+                    }
+                }
+            )
+    except Exception as n_err:
+        logger.warning("Could not dispatch SOS status update notification in admin_service: %s", n_err)
+
     return updated_record
 
 

@@ -5,31 +5,32 @@ counting unread notifications, and updating read statuses.
 """
 
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
 from services.notification_service import (
     get_user_notifications,
     get_unread_notification_count,
     mark_notification_as_read,
-    mark_all_notifications_as_read
+    mark_all_notifications_as_read,
+    delete_notification
 )
 
 logger = logging.getLogger(__name__)
 
+from services.auth_tokens import authenticate_request
+
 notification_bp = Blueprint("notifications", __name__)
 
 
+@notification_bp.before_request
+def _require_session():
+    # Every notification endpoint is per-user: identity comes from the session token,
+    # never from a client-supplied user_id (which allowed reading others' notifications).
+    return authenticate_request()
+
+
 def _extract_user_id():
-    """Extract user_id from query params, body, or headers."""
-    uid = request.args.get("user_id") or request.headers.get("X-User-Id")
-    if not uid and request.is_json:
-        data = request.get_json(silent=True) or {}
-        uid = data.get("user_id")
-    if uid:
-        try:
-            return int(uid)
-        except (ValueError, TypeError):
-            return None
-    return None
+    """The signed-in user's id (set by the session token)."""
+    return g.user_id
 
 
 @notification_bp.route("/notifications", methods=["GET"])
@@ -71,8 +72,8 @@ def get_unread_count():
     return jsonify({"success": True, "user_id": user_id, "unread_count": count}), 200
 
 
-@notification_bp.route("/notifications/<int:notification_id>/read", methods=["PATCH", "POST"])
-@notification_bp.route("/api/notifications/<int:notification_id>/read", methods=["PATCH", "POST"])
+@notification_bp.route("/notifications/<int:notification_id>/read", methods=["PATCH", "POST", "PUT"])
+@notification_bp.route("/api/notifications/<int:notification_id>/read", methods=["PATCH", "POST", "PUT"])
 def mark_read(notification_id: int):
     """
     Mark a specific notification as read.
@@ -84,8 +85,10 @@ def mark_read(notification_id: int):
     return jsonify({"success": False, "message": "Notification not found or already read"}), 404
 
 
-@notification_bp.route("/notifications/read-all", methods=["PATCH", "POST"])
-@notification_bp.route("/api/notifications/read-all", methods=["PATCH", "POST"])
+@notification_bp.route("/notifications/read-all", methods=["PATCH", "POST", "PUT"])
+@notification_bp.route("/api/notifications/read-all", methods=["PATCH", "POST", "PUT"])
+@notification_bp.route("/notifications/mark-all-read", methods=["PATCH", "POST", "PUT"])
+@notification_bp.route("/api/notifications/mark-all-read", methods=["PATCH", "POST", "PUT"])
 def mark_all_read():
     """
     Mark all notifications for the given user as read.
@@ -100,3 +103,16 @@ def mark_all_read():
         "message": f"All notifications marked as read ({updated_count} updated)",
         "updated_count": updated_count
     }), 200
+
+
+@notification_bp.route("/notifications/<int:notification_id>", methods=["DELETE"])
+@notification_bp.route("/api/notifications/<int:notification_id>", methods=["DELETE"])
+def delete_single_notification(notification_id: int):
+    """
+    Delete a specific notification for the user.
+    """
+    user_id = _extract_user_id()
+    success = delete_notification(notification_id=notification_id, user_id=user_id)
+    if success:
+        return jsonify({"success": True, "message": "Notification deleted successfully"}), 200
+    return jsonify({"success": False, "message": "Notification not found or access denied"}), 404

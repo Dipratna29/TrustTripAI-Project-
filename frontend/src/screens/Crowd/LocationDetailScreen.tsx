@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   },
   locationTitle: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   coordsRow: {
     flexDirection: "row",
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   },
   capacityNum: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 4,
   },
   progressTrack: {

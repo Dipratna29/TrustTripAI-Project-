@@ -8,7 +8,7 @@ import AppIcon from "../components/common/AppIcon";
 import { colors, typography, radius } from "../theme";
 
 import { usePushNotifications } from "../hooks/usePushNotifications";
-import { clearStoredPushToken } from "../services/pushNotificationService";
+import { clearStoredPushToken, getLastNotificationResponse } from "../services/pushNotificationService";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 
 /* AUTH SCREENS */
@@ -49,7 +49,7 @@ const Stack = createNativeStackNavigator();
 type RootStackParamList = {
   Home: undefined;
   SelectLocation: undefined;
-  Notifications: undefined;
+  Notifications: { selectedNotification?: any; notificationId?: number } | undefined;
   Login: undefined;
   Register: undefined;
   Profile: undefined;
@@ -105,26 +105,42 @@ function RootNavigationContent() {
     }
   }, [isAuthenticated]);
 
+  // Handle cold-start notification tap
+  useEffect(() => {
+    getLastNotificationResponse()
+      .then((response) => {
+        if (response && navigationRef.current) {
+          handleNotificationTap(response);
+        }
+      })
+      .catch((err) => console.log("Cold start notification check error:", err));
+  }, []);
+
   /**
-   * Handle notification tap and navigate to appropriate screen
-   * Uses notification.request.content.data to determine which screen to open
+   * Handle notification tap and show full notification in phone
    */
   const handleNotificationTap = (response: Notifications.NotificationResponse) => {
     try {
-      const data = response.notification.request.content.data as any;
-      console.log("Notification data:", data);
+      const content = response.notification.request.content;
+      const data = (content.data as any) || {};
+      console.log("Notification tapped from phone tray:", content);
 
-      if (navigationRef.current && data && data.screen) {
-        // Map notification types to screen names
-        const screenMap: { [key: string]: string } = {
-          welcome: "Home",
-          equipment_order: "Equipment",
-          complaint: "MyComplaints",
-          guide_request: "Guide",
+      if (navigationRef.current) {
+        const notifItem = {
+          notification_id: data.notification_id || Date.now(),
+          user_id: data.user_id || 0,
+          notification_type: data.type || "system",
+          title: content.title || "Notification",
+          body: content.body || "",
+          data: data,
+          is_read: true,
+          created_at: new Date().toISOString(),
         };
 
-        const targetScreen = screenMap[data.type as string] || data.screen;
-        navigationRef.current.navigate(targetScreen);
+        // Open Notifications screen with full notification detail modal displayed
+        navigationRef.current.navigate("Notifications", {
+          selectedNotification: notifItem,
+        });
       }
     } catch (error) {
       console.log("Error handling notification tap:", error);

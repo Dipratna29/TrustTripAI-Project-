@@ -4,6 +4,7 @@
  */
 
 import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../config/api";
 
@@ -17,6 +18,42 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+// Configure default Android Notification Channel (Required for Android 8.0+)
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "TrustTrip Alerts",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#f59e0b",
+    sound: "default",
+    showBadge: true,
+  }).catch((err) => console.log("Failed to set notification channel:", err));
+}
+
+/**
+ * Triggers an immediate local notification on device
+ */
+export const triggerLocalNotification = async (
+  title: string,
+  body: string,
+  data: any = {}
+) => {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data,
+        sound: "default",
+        priority: Notifications.AndroidNotificationPriority.MAX,
+      },
+      trigger: null,
+    });
+  } catch (error) {
+    console.log("Could not trigger local notification:", error);
+  }
+};
 
 /**
  * Request notification permission from user

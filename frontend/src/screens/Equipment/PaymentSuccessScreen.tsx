@@ -1,27 +1,40 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
 import CosmicBackground from "../../components/common/CosmicBackground";
 import SurfaceCard from "../../components/common/SurfaceCard";
 import ScreenHeader from "../../components/common/ScreenHeader";
 import AppIcon from "../../components/common/AppIcon";
+import { triggerLocalNotification } from "../../services/pushNotificationService";
 import { colors, typography, radius, spacing, shadows } from "../../theme";
 
 export default function PaymentSuccessScreen({ route, navigation }: any) {
-  const { paymentId, orderId, amount, equipmentName } = route.params || {};
+  const { paymentId, orderId, amount, equipmentName, paymentMethod } = route.params || {};
+  const isCod = paymentMethod === "COD";
+
+  useEffect(() => {
+    triggerLocalNotification(
+      isCod ? "📦 Order Placed (Cash on Delivery)" : "💳 Payment & Order Confirmed",
+      `Your order for ${equipmentName || "Safety Equipment"} is confirmed (Ref: ${orderId || "N/A"}).`,
+      { type: "payment_success", screen: "MyOrders", order_id: orderId }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <CosmicBackground>
-      <ScreenHeader title="Payment Verified" />
+      <ScreenHeader title={isCod ? "Order Placed" : "Payment Verified"} showBack={false} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* CHECKMARK HERO */}
         <View style={styles.heroSection}>
           <View style={styles.checkCircle}>
-            <AppIcon name="checkmark" size={42} color={colors.background} />
+            <AppIcon name="checkmark" size={42} color={colors.white} />
           </View>
-          <Text style={styles.title}>Payment Authorized & Captured</Text>
+          <Text style={styles.title}>{isCod ? "Order Confirmed" : "Payment Authorized & Captured"}</Text>
           <Text style={styles.subtitle}>
-            Your safety equipment reservation is confirmed. Razorpay transaction logged with authority dispatch.
+            {isCod
+              ? "Your safety equipment is on its way. Please keep the exact amount ready and pay in cash at delivery."
+              : "Your safety equipment order is confirmed and the Razorpay payment has been verified."}
           </Text>
         </View>
 
@@ -29,16 +42,17 @@ export default function PaymentSuccessScreen({ route, navigation }: any) {
         <SurfaceCard style={styles.receiptCard} variant="elevated">
           <View style={styles.cardHeaderRow}>
             <AppIcon name="shield-checkmark" size={18} color={colors.primary} />
-            <Text style={styles.receiptTitle}>OFFICIAL TRANSACTION RECEIPT</Text>
+            <Text style={styles.receiptTitle}>{isCod ? "ORDER SUMMARY" : "OFFICIAL TRANSACTION RECEIPT"}</Text>
           </View>
 
           <View style={styles.divider} />
 
           <Row label="Equipment Item" value={equipmentName || "Personal Safety Alarm"} />
-          <Row label="Gateway Order ID" value={orderId || "—"} />
-          <Row label="Razorpay Payment ID" value={paymentId || "—"} />
+          <Row label={isCod ? "Order ID" : "Gateway Order ID"} value={String(orderId || "—")} />
+          <Row label="Payment Method" value={isCod ? "Cash on Delivery" : "Razorpay (Online)"} />
+          {!isCod && <Row label="Razorpay Payment ID" value={paymentId || "—"} />}
           <Row
-            label="Total Authorized"
+            label={isCod ? "Amount Due on Delivery" : "Total Authorized"}
             value={`₹${(Number(amount || 0) / 100).toFixed(2)}`}
             isTotal
           />
@@ -51,7 +65,7 @@ export default function PaymentSuccessScreen({ route, navigation }: any) {
             onPress={() => navigation.navigate("MyOrders")}
             activeOpacity={0.85}
           >
-            <AppIcon name="cube" size={18} color={colors.background} />
+            <AppIcon name="cube" size={18} color={colors.white} />
             <Text style={styles.primaryBtnText}>View My Orders</Text>
           </TouchableOpacity>
 
@@ -101,7 +115,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h2,
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: "center",
   },
   subtitle: {
@@ -171,7 +185,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.button.fontFamily,
     fontSize: 15,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
   secondaryBtn: {
     alignItems: "center",

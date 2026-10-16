@@ -25,7 +25,12 @@ type Order = {
   total_price: number;
   status: string;
   created_at: string;
+  payment_method?: string;
+  payment_status?: string;
 };
+
+const isCod = (o: Order) =>
+  (o.payment_method || "").toUpperCase() === "COD" || (o.status || "").toUpperCase().includes("COD");
 
 export default function MyOrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -87,7 +92,7 @@ export default function MyOrdersScreen() {
             style={styles.browseBtn}
             onPress={() => navigation.navigate("Equipment")}
           >
-            <AppIcon name="add" size={16} color={colors.background} />
+            <AppIcon name="add" size={16} color={colors.white} />
             <Text style={styles.browseBtnText}>Order Gear</Text>
           </TouchableOpacity>
         }
@@ -112,7 +117,7 @@ export default function MyOrdersScreen() {
               <AppIcon name="cube-outline" size={36} color={colors.textMuted} />
               <Text style={styles.emptyTitle}>No Orders Yet</Text>
               <Text style={styles.emptyDesc}>
-                Rent verified tourist safety equipment with instant Razorpay delivery.
+                Order verified tourist safety equipment. Pay online or with cash on delivery.
               </Text>
               <TouchableOpacity
                 style={styles.exploreBtn}
@@ -130,7 +135,9 @@ export default function MyOrdersScreen() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={typography.h4}>{item.name}</Text>
-                  <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>
+                  <Text style={styles.orderDate}>
+                    {formatDate(item.created_at)} · {isCod(item) ? "Cash on Delivery" : "Paid online"}
+                  </Text>
                 </View>
                 <StatusBadge
                   label={item.status || "CONFIRMED"}
@@ -148,7 +155,7 @@ export default function MyOrdersScreen() {
                   <Text style={styles.metaValue}>#{item.id}</Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.metaLabel}>TOTAL PAID</Text>
+                  <Text style={styles.metaLabel}>{isCod(item) ? "PAY ON DELIVERY" : "TOTAL PAID"}</Text>
                   <Text style={[styles.metaValue, { color: colors.primary }]}>
                     ₹{Number(item.total_price || 0).toFixed(2)}
                   </Text>
@@ -183,7 +190,7 @@ const styles = StyleSheet.create({
   browseBtnText: {
     fontSize: 12,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
   listContent: {
     paddingBottom: 32,
@@ -238,7 +245,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 8,
   },
   emptyDesc: {
@@ -257,6 +264,6 @@ const styles = StyleSheet.create({
   exploreBtnText: {
     ...typography.caption,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
 });

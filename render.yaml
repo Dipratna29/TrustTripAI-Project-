@@ -1,0 +1,43 @@
+# Render Blueprint (free tier) - deploys the TrustTrip Flask API.
+# Render dashboard -> New -> Blueprint -> pick this repo. Fill the "sync: false" values when prompted.
+services:
+  - type: web
+    name: trusttrip-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 2 --threads 4 --timeout 60 --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TRUST_PROXY
+        value: "true"
+      - key: REQUIRE_HTTPS_PAYMENTS
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: RAZORPAY_MODE
+        value: test
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: EXPO_ACCESS_TOKEN
+        sync: false

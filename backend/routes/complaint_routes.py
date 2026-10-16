@@ -5,6 +5,7 @@ from services.complaint_service import (
     get_user_id_by_username
 )
 from services.notification_service import send_notification_to_user
+from services.auth_tokens import require_user, owns_username, forbidden_response
 
 complaint_bp = Blueprint("complaint", __name__)
 
@@ -54,12 +55,15 @@ def add_complaint():
 @complaint_bp.route("/user-complaints/<username>", methods=["GET"])
 @complaint_bp.route("/complaints/user/<username>", methods=["GET"])
 @complaint_bp.route("/complaints", methods=["GET"])
+@require_user
 def get_user_complaints_route(username=None):
     if not username:
         username = request.args.get("username")
     
     if not username:
         return jsonify({"success": False, "message": "Username is required"}), 400
+    if not owns_username(username):
+        return forbidden_response()
 
     complaints = get_complaints(username)
     return jsonify(complaints)

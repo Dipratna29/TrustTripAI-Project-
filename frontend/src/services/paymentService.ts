@@ -37,8 +37,44 @@ export async function createPaymentOrder(equipmentId: number, quantity: number, 
   return { ...response.data, userId };
 }
 
-export async function openRazorpayCheckout(order: PaymentOrder, userName?: string) {
-  const key = RAZORPAY_KEY_ID || order.key_id;
+export type CodOrderResult = {
+  order_id: number;
+  name: string;
+  quantity: number;
+  total_price: number;
+  payment_method: "COD";
+  status: string;
+};
+
+/** Cash on Delivery: server prices the order and reserves stock; payment is collected at delivery. */
+export async function placeCodOrder(
+  equipmentId: number,
+  quantity: number,
+  location: { latitude: number; longitude: number },
+  delivery: { address?: string; phone?: string } = {}
+) {
+  const userId = await getUserId();
+  const response = await api.post<{ success: boolean; message: string; order_id: number; data: CodOrderResult }>(
+    "/orders/cod",
+    {
+      user_id: userId,
+      equipment_id: equipmentId,
+      quantity,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      delivery_address: delivery.address,
+      contact_phone: delivery.phone,
+    }
+  );
+  return response.data;
+}
+
+export async function openRazorpayCheckout(
+  order: PaymentOrder,
+  prefill: { name?: string; contact?: string } = {}
+) {
+  // The order was created with the server's key; using a different client key makes checkout fail
+  const key = order.key_id || RAZORPAY_KEY_ID;
   if (!key) throw new Error("Payment is not configured");
   return RazorpayCheckout.open({
     key,
@@ -47,7 +83,7 @@ export async function openRazorpayCheckout(order: PaymentOrder, userName?: strin
     name: "TrustTrip",
     description: order.equipment_name ? `${order.equipment_name} safety equipment` : "Safety equipment order",
     order_id: order.order_id,
-    prefill: { name: userName || "TrustTrip user" },
+    prefill: { name: prefill.name || "TrustTrip user", contact: prefill.contact || "" },
     theme: { color: "#4050C8" },
   });
 }

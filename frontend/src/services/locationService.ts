@@ -5,6 +5,7 @@
  */
 
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../config/api';
 import type {
@@ -100,8 +101,78 @@ export const getLastKnownLocation = async (): Promise<LocationCoordinates | null
   }
 };
 
+const toCoords = (location: Location.LocationObject): LocationCoordinates => ({
+  latitude: location.coords.latitude,
+  longitude: location.coords.longitude,
+  accuracy: location.coords.accuracy,
+  altitude: location.coords.altitude,
+  altitudeAccuracy: location.coords.altitudeAccuracy ?? null,
+  heading: location.coords.heading,
+  speed: location.coords.speed,
+});
+
+/** Target accuracy (meters) at which we stop sampling and accept the fix. */
+const TARGET_ACCURACY_M = 20;
+/** How long to keep refining a fix before returning the best sample. */
+const PRECISE_FIX_TIMEOUT_MS = 12000;
+/** A cached fix younger than this and at least this accurate is good enough to use immediately. */
+const FRESH_FIX_MAX_AGE_MS = 30000;
+
 /**
- * Get current GPS coordinates safely.
+ * On Android, ask the user to switch on Google "Location Accuracy" (Wi-Fi + cell assisted GPS).
+ * Without it the device often reports coarse, network-only positions hundreds of meters off.
+ */
+let highAccuracyPrompted = false;
+const ensureHighAccuracyMode = async () => {
+  if (Platform.OS !== 'android' || highAccuracyPrompted) return;
+  highAccuracyPrompted = true; // ask at most once per app session
+  try {
+    await Location.enableNetworkProviderAsync();
+  } catch {
+    // User declined - continue with GPS only
+  }
+};
+
+/**
+ * Sample high-accuracy positions for a few seconds and return the most accurate one.
+ * A single getCurrentPositionAsync call frequently returns the first (coarse) fix.
+ */
+const getPreciseFix = (): Promise<LocationCoordinates | null> =>
+  new Promise((resolve) => {
+    let best: LocationCoordinates | null = null;
+    let subscription: Location.LocationSubscription | null = null;
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      subscription?.remove();
+      resolve(best);
+    };
+
+    const timer = setTimeout(finish, PRECISE_FIX_TIMEOUT_MS);
+
+    Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
+      (location) => {
+        const coords = toCoords(location);
+        if (!best || (coords.accuracy ?? Infinity) < (best.accuracy ?? Infinity)) best = coords;
+        if ((coords.accuracy ?? Infinity) <= TARGET_ACCURACY_M) finish();
+      }
+    )
+      .then((sub) => {
+        subscription = sub;
+        if (settled) sub.remove();
+      })
+      .catch((error) => {
+        console.log('[LocationService] precise fix watch error:', error);
+        finish();
+      });
+  });
+
+/**
+ * Get current GPS coordinates safely and as precisely as the device allows.
  * Never throws blocking errors, never hangs, and never returns fake coordinates.
  */
 export const getCurrentLocation = async (): Promise<LocationCoordinates | null> => {
@@ -120,33 +191,30 @@ export const getCurrentLocation = async (): Promise<LocationCoordinates | null> 
       return null;
     }
 
-    // 3. Try to get current position with balanced accuracy and 7-second timeout
-    const positionPromise = Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    await ensureHighAccuracyMode();
 
-    const timeoutPromise = new Promise<null>((resolve) => {
-      setTimeout(() => {
-        console.log('[LocationService] getCurrentPositionAsync timed out after 7s');
-        resolve(null);
-      }, 7000);
-    });
-
-    const location = await Promise.race([positionPromise, timeoutPromise]);
-
-    if (location && location.coords) {
-      return {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        accuracy: location.coords.accuracy,
-        altitude: location.coords.altitude,
-        altitudeAccuracy: location.coords.altitudeAccuracy ?? null,
-        heading: location.coords.heading,
-        speed: location.coords.speed,
-      };
+    // 3. A very recent, accurate cached fix can be used immediately
+    try {
+      const cached = await Location.getLastKnownPositionAsync({
+        maxAge: FRESH_FIX_MAX_AGE_MS,
+        requiredAccuracy: TARGET_ACCURACY_M,
+      });
+      if (cached) return toCoords(cached);
+    } catch {
+      // ignore - fall through to a live fix
     }
 
-    // 4. Fallback to last known position if current acquisition timed out or returned empty
+    // 4. Refine a live high-accuracy fix (returns the best sample within the time budget)
+    const precise = await getPreciseFix();
+    if (precise) return precise;
+
+    // 5. Last resort: one-shot high accuracy read, then any last known position
+    try {
+      const single = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      if (single) return toCoords(single);
+    } catch {
+      // ignore
+    }
     return await getLastKnownLocation();
   } catch (error) {
     console.log('[LocationService] getCurrentLocation non-fatal notice, trying last known position:', error);
@@ -164,28 +232,22 @@ export const watchLocation = (
 ): (() => void) => {
   const settings = { ...DEFAULT_CONFIG, ...config };
   let unsubscribeFn: (() => void) | null = null;
+  let cancelled = false;
 
   Location.watchPositionAsync(
     {
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.High,
       timeInterval: settings.updateIntervalMs,
       distanceInterval: 10,
     },
     (location) => {
-      const coords: LocationCoordinates = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        accuracy: location.coords.accuracy,
-        altitude: location.coords.altitude,
-        altitudeAccuracy: location.coords.altitudeAccuracy ?? null,
-        heading: location.coords.heading,
-        speed: location.coords.speed,
-      };
-      onLocationChange(coords);
+      onLocationChange(toCoords(location));
     }
   )
     .then((subscription) => {
-      unsubscribeFn = () => subscription.remove();
+      // Caller may have unsubscribed before the watch finished starting
+      if (cancelled) subscription.remove();
+      else unsubscribeFn = () => subscription.remove();
     })
     .catch((error) => {
       console.log('[LocationService] watchLocation notice:', error);
@@ -193,40 +255,86 @@ export const watchLocation = (
     });
 
   return () => {
+    cancelled = true;
     if (unsubscribeFn) {
       unsubscribeFn();
     }
   };
 };
 
+export type ReverseGeocodeResult = { name: string; address: string; locality?: string };
+
+// Google "plus codes" (e.g. PCFP+6Q4) are returned as place names on Android; they are not human readable
+const PLUS_CODE = /^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}/i;
+const isMeaningfulName = (value?: string | null) =>
+  !!value && !/^[0-9\s/-]+$/.test(value) && !PLUS_CODE.test(value.trim());
+
+const joinLocality = (city?: string | null, region?: string | null) =>
+  [city, region].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(', ') || undefined;
+
 /**
- * Reverse geocode coordinates to get a clean human-readable name and address
+ * Free OpenStreetMap reverse geocoder, used when the device geocoder fails or returns no city
+ * (common on Android devices/emulators without Google Play geocoding).
+ */
+const reverseGeocodeOsm = async (latitude: number, longitude: number): Promise<ReverseGeocodeResult | null> => {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=16&addressdetails=1&accept-language=en`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TrustTrip/1.0 (travel safety app)' } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data?.address || {};
+    const city = a.city || a.town || a.village || a.municipality || a.suburb || a.county;
+    const region = a.state;
+    const name = a.road || a.neighbourhood || a.suburb || city || 'Current Location';
+    const address = [a.road, a.neighbourhood || a.suburb, city, region, a.postcode].filter(Boolean).join(', ');
+    return { name, address: address || data?.display_name || '', locality: joinLocality(city, region) };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Reverse geocode coordinates to get a clean human-readable name, address and "City, State"
  */
 export const reverseGeocodeCoords = async (
   latitude: number,
   longitude: number
-): Promise<{ name: string; address: string }> => {
+): Promise<ReverseGeocodeResult> => {
   try {
     const results = await Location.reverseGeocodeAsync({ latitude, longitude });
     if (results && results.length > 0) {
       const place = results[0];
       const parts: string[] = [];
 
-      if (place.name && place.name !== place.street) parts.push(place.name);
-      if (place.street) parts.push(place.street);
+      const meaningfulName = isMeaningfulName(place.name) ? place.name : null;
+      if (meaningfulName && meaningfulName !== place.street) parts.push(meaningfulName);
+      if (place.street) parts.push(place.streetNumber ? `${place.streetNumber} ${place.street}` : place.street);
       if (place.district || place.subregion) parts.push(place.district || place.subregion || '');
       if (place.city) parts.push(place.city);
       if (place.region) parts.push(place.region);
+      if (place.postalCode) parts.push(place.postalCode);
 
-      const cleanParts = parts.filter(Boolean);
-      const name = place.name || place.district || place.city || 'Current Location';
+      const city = place.city || place.subregion || place.district;
+      const locality = joinLocality(city, place.region);
+
+      // Device geocoder gave no usable city: prefer OpenStreetMap's answer
+      if (!place.city) {
+        const osm = await reverseGeocodeOsm(latitude, longitude);
+        if (osm?.locality) return osm;
+      }
+
+      const cleanParts = parts.filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
+      const name = meaningfulName || place.street || place.district || place.city || 'Current Location';
       const address = cleanParts.length > 0 ? cleanParts.join(', ') : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 
-      return { name, address };
+      return { name, address, locality };
     }
   } catch (error) {
     console.log('[LocationService] reverseGeocode non-critical notice:', error);
   }
+
+  const osm = await reverseGeocodeOsm(latitude, longitude);
+  if (osm) return osm;
 
   // Fallback to match curated locations or coordinates string
   const matched = POPULAR_TRAVEL_LOCATIONS.find(
@@ -237,6 +345,7 @@ export const reverseGeocodeCoords = async (
     return {
       name: matched.name,
       address: `${matched.area}, ${matched.city}, ${matched.state}`,
+      locality: `${matched.city}, ${matched.state}`,
     };
   }
 

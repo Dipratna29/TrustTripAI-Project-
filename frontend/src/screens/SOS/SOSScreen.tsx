@@ -12,31 +12,25 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../config/api";
-import locationService from "../../services/locationService";
+import { triggerLocalNotification } from "../../services/pushNotificationService";
 import CosmicBackground from "../../components/common/CosmicBackground";
-import SurfaceCard from "../../components/common/SurfaceCard";
-import ScreenHeader from "../../components/common/ScreenHeader";
 import AppIcon from "../../components/common/AppIcon";
 import CustomBottomNav from "../../components/common/CustomBottomNav";
-import ActiveLocationBar from "../../components/common/ActiveLocationBar";
 import { useLocationContext } from "../../context/LocationContext";
-import { colors, typography, radius, shadows, spacing } from "../../theme";
+import { colors, radius } from "../../theme";
 
-interface EmergencyService {
+interface EmergencyContact {
   id: string;
   name: string;
   number: string;
   icon: string;
-  category: string;
 }
 
-const SERVICES: EmergencyService[] = [
-  { id: "1", name: "Police Dispatch", number: "100", icon: "shield", category: "Law & Order" },
-  { id: "2", name: "Medical Ambulance", number: "108", icon: "medkit", category: "Emergency Healthcare" },
-  { id: "3", name: "Fire & Rescue", number: "101", icon: "alert-circle", category: "Disaster Response" },
-  { id: "4", name: "Women Emergency Helpline", number: "1091", icon: "heart", category: "Women Protection" },
-  { id: "5", name: "National Emergency Service", number: "112", icon: "call", category: "Unified Response" },
-  { id: "6", name: "Forest / Wildlife Emergency", number: "1926", icon: "compass", category: "Ranger Assistance" },
+const EMERGENCY_CONTACTS: EmergencyContact[] = [
+  { id: "1", name: "Police", number: "100", icon: "shield" },
+  { id: "2", name: "Ambulance", number: "108", icon: "medkit" },
+  { id: "3", name: "Women Helpline", number: "1091", icon: "heart" },
+  { id: "4", name: "National Emergency", number: "112", icon: "call" },
 ];
 
 export default function SOSScreen() {
@@ -44,7 +38,25 @@ export default function SOSScreen() {
   const [holdingSOS, setHoldingSOS] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
   const holdAnim = useRef(new Animated.Value(0)).current;
-  const { activeLocation, isManual } = useLocationContext();
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const { activeLocation } = useLocationContext();
+
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
 
   const performSOSBroadcast = async (loc: typeof activeLocation) => {
     setBroadcasting(true);
@@ -53,9 +65,10 @@ export default function SOSScreen() {
       const user = userStr ? JSON.parse(userStr) : null;
       const uid = user?.id || user?.user_id;
 
-      // Send SOS incident to backend with real coordinates and source (never fake)
       const payload: any = {
-        user_id: uid,
+        user_id: uid ? Number(uid) : undefined,
+        username: user?.username || undefined,
+        phone: user?.mob || user?.phone_number || undefined,
         type: "EMERGENCY_BROADCAST",
       };
 
@@ -64,25 +77,47 @@ export default function SOSScreen() {
         payload.longitude = loc.longitude;
         payload.location_name = loc.name;
         payload.location_source = loc.source;
-      } else {
-        payload.latitude = null;
-        payload.longitude = null;
-        payload.location_name = null;
-        payload.location_source = "NONE";
       }
 
-      await api.post("/sos/trigger", payload).catch(() => null);
+      // Retry once: SOS must not silently fail on a flaky connection
+      let delivered = false;
+      for (let attempt = 0; attempt < 2 && !delivered; attempt++) {
+        try {
+          const res = await api.post("/sos/trigger", payload, { timeout: 15000 });
+          delivered = !!res.data?.success;
+        } catch {
+          delivered = false;
+        }
+      }
 
-      const locNotice = loc
-        ? loc.source === "MANUAL"
-          ? `Your manually selected location (${loc.name}) has been transmitted to emergency responders.`
-          : `Your live GPS coordinates have been transmitted to local emergency responders.`
-        : "Distress beacon sent WITHOUT coordinates. Please communicate your exact whereabouts when contacted.";
+      if (!delivered) {
+        // Never claim responders were alerted when the server did not receive the SOS
+        Alert.alert(
+          "SOS NOT DELIVERED",
+          "We could not reach TrustTrip servers. Call emergency services directly now.",
+          [
+            { text: "Call 112", style: "destructive", onPress: () => Linking.openURL("tel:112") },
+            { text: "Retry", onPress: () => performSOSBroadcast(loc) },
+          ]
+        );
+        return;
+      }
+
+      triggerLocalNotification(
+        "🚨 SOS Dispatched to Administration",
+        loc
+          ? `Emergency alert broadcast for ${loc.name}. Administration and local first responders have been notified.`
+          : "Emergency distress signal sent. Administration and local first responders have been notified.",
+        { type: "sos_dispatched", screen: "SOS" }
+      );
 
       Alert.alert(
         "EMERGENCY ALERT BROADCAST",
-        locNotice,
+        loc
+          ? `Your location (${loc.name}) has been sent to TrustTrip responders. If you are in immediate danger, also call 112.`
+          : "Distress signal sent without location. Turn on GPS if possible, and call 112 if you are in immediate danger.",
         [
+          { text: "Call 112", onPress: () => Linking.openURL("tel:112") },
           {
             text: "Open Command Center",
             onPress: () =>
@@ -93,7 +128,10 @@ export default function SOSScreen() {
         ]
       );
     } catch {
-      Alert.alert("Emergency Alert Sent", "Emergency services notified.");
+      Alert.alert("SOS NOT DELIVERED", "Something went wrong. Call emergency services (112) directly.", [
+        { text: "Call 112", style: "destructive", onPress: () => Linking.openURL("tel:112") },
+        { text: "OK" },
+      ]);
     } finally {
       setBroadcasting(false);
       setHoldingSOS(false);
@@ -109,37 +147,7 @@ export default function SOSScreen() {
       useNativeDriver: false,
     }).start(({ finished }) => {
       if (finished) {
-        if (!activeLocation) {
-          Alert.alert(
-            "Location Unavailable",
-            "No live GPS or manual location is currently detected. Responders will receive your distress beacon without coordinates.\n\nBroadcast anyway, or select a location manually?",
-            [
-              {
-                text: "Select Location First",
-                onPress: () => {
-                  setHoldingSOS(false);
-                  holdAnim.setValue(0);
-                  navigation.navigate("SelectLocation");
-                },
-              },
-              {
-                text: "Broadcast Without Coordinates",
-                style: "destructive",
-                onPress: () => performSOSBroadcast(null),
-              },
-              {
-                text: "Cancel",
-                style: "cancel",
-                onPress: () => {
-                  setHoldingSOS(false);
-                  holdAnim.setValue(0);
-                },
-              },
-            ]
-          );
-        } else {
-          performSOSBroadcast(activeLocation);
-        }
+        performSOSBroadcast(activeLocation);
       }
     });
   };
@@ -155,108 +163,98 @@ export default function SOSScreen() {
     }
   };
 
-  const callNumber = (num: string) => {
-    Linking.openURL(`tel:${num}`).catch(() => {});
+  const callNumber = (number: string) => {
+    Linking.openURL(`tel:${number}`).catch(() => {
+      Alert.alert("Notice", `Unable to place call to ${number}. Please dial directly.`);
+    });
   };
 
   return (
-    <CosmicBackground>
-      <ScreenHeader
-        title="Emergency SOS"
-        subtitle="Hold to broadcast • Direct dispatch line"
-        showBack
-        onBack={() => navigation.goBack()}
-      />
+    <CosmicBackground variant="dark">
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          accessibilityLabel="Back"
+        >
+          <AppIcon name="arrow-back" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.headerTitle}>Emergency SOS</Text>
+          <Text style={styles.headerSubtitle}>Get immediate help</Text>
+        </View>
+      </View>
 
       <ScrollView
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* ACTIVE LOCATION INDICATOR (GPS VS MANUAL) */}
-        <ActiveLocationBar style={{ marginHorizontal: spacing.screenPadding, marginBottom: 14 }} />
-
-        {/* MAIN HOLD-TO-ACTIVATE SOS HERO CARD */}
-        <View style={styles.sosCardWrap}>
-          <TouchableOpacity
-            activeOpacity={0.92}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            style={styles.sosTouchable}
-          >
-            <View style={styles.sosContentRow}>
-              <View style={styles.sosIconCircle}>
-                <AppIcon name="alert-circle" size={32} color={colors.white} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text style={styles.sosTitle}>
-                  {broadcasting ? "BROADCASTING ALERT..." : "EMERGENCY SOS"}
-                </Text>
-                <Text style={styles.sosSub}>
-                  {holdingSOS
-                    ? "HOLD FOR 2 SECONDS TO BROADCAST..."
-                    : "Press & hold for 2 seconds to alert responders & contacts"}
-                </Text>
-              </View>
-              <AppIcon name="chevron-forward" size={20} color={colors.white} />
-            </View>
-
-            {/* Hold progress bar */}
-            <Animated.View
-              style={[
-                styles.progressBar,
-                {
-                  width: holdAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0%", "100%"],
-                  }),
-                },
-              ]}
-            />
-          </TouchableOpacity>
-        </View>
-
-        {/* INSTRUCTION BADGE */}
-        <SurfaceCard style={styles.instructionCard}>
-          <View style={styles.instructionRow}>
-            <AppIcon name="shield-checkmark" size={18} color={colors.primary} />
-            <Text style={styles.instructionText}>
-              Telemetry coordinates & device telemetry are automatically attached to the broadcast.
-            </Text>
-          </View>
-        </SurfaceCard>
-
-        {/* DIRECT HELPLINE SERVICES */}
-        <View style={styles.sectionHeader}>
-          <Text style={typography.h3}>Instant Authority Lines</Text>
-        </View>
-
-        {SERVICES.map((item) => (
-          <SurfaceCard
-            key={item.id}
-            style={styles.serviceCard}
-            onPress={() => navigation.navigate("SOSDetail", { emergency: item })}
-          >
-            <View style={styles.serviceRow}>
-              <View style={styles.serviceIconWrap}>
-                <AppIcon name={item.icon} size={20} color={colors.danger} />
-              </View>
-
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={typography.h4}>{item.name}</Text>
-                <Text style={styles.serviceCategory}>{item.category}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.callBtn}
-                onPress={() => callNumber(item.number)}
-                activeOpacity={0.8}
+        {/* CONCENTRIC GLOWING RINGS WITH CENTRAL PULSATING SOS BUTTON */}
+        <View style={styles.concentricWrapper}>
+          <View style={styles.outerGlowRing}>
+            <View style={styles.middleGlowRing}>
+              <Animated.View
+                style={[
+                  styles.pulsingWrap,
+                  {
+                    transform: [{ scale: pulseAnim }],
+                  },
+                ]}
               >
-                <AppIcon name="call" size={14} color={colors.white} />
-                <Text style={styles.callBtnText}>{item.number}</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sosCenterButton}
+                  onPressIn={handlePressIn}
+                  onPressOut={handlePressOut}
+                  activeOpacity={0.88}
+                >
+                  <AppIcon name="alert-circle" size={48} color="#FFFFFF" />
+                  <Text style={styles.sosHoldPrompt}>
+                    {broadcasting
+                      ? "ALERTING..."
+                      : holdingSOS
+                      ? "HOLDING..."
+                      : "Hold for 2 seconds"}
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
             </View>
-          </SurfaceCard>
-        ))}
+          </View>
+        </View>
+
+        {/* WARNING NOTICE BANNER */}
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningText}>
+            Your location will be shared with emergency contacts and authorities.
+          </Text>
+        </View>
+
+        {/* EMERGENCY CONTACTS LIST */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Emergency Contacts</Text>
+        </View>
+
+        <View style={styles.contactsContainer}>
+          {EMERGENCY_CONTACTS.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.contactCard}
+              onPress={() => callNumber(item.number)}
+              activeOpacity={0.85}
+            >
+              <View style={styles.contactIconWrap}>
+                <AppIcon name={item.icon} size={20} color="#FF4D5E" />
+              </View>
+
+              <Text style={styles.contactName}>{item.name}</Text>
+
+              <View style={styles.contactCallRow}>
+                <AppIcon name="call" size={16} color="#FF4D5E" />
+                <Text style={styles.contactNumber}>{item.number}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
 
       {/* BOTTOM NAV */}
@@ -266,108 +264,149 @@ export default function SOSScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: spacing.screenPadding,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 14,
+    backgroundColor: "#0B1120",
   },
-  sosCardWrap: {
-    backgroundColor: colors.danger,
-    borderRadius: radius.card,
-    overflow: "hidden",
-    marginBottom: 16,
-    ...shadows.glowDanger,
-  },
-  sosTouchable: {
-    padding: 18,
-    position: "relative",
-  },
-  sosContentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    zIndex: 2,
-  },
-  sosIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
-  sosTitle: {
-    fontFamily: typography.h1.fontFamily,
-    fontSize: 18,
-    fontWeight: "900",
-    color: colors.white,
-    letterSpacing: 0.5,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
-  sosSub: {
-    ...typography.caption,
-    color: "rgba(255, 255, 255, 0.9)",
-    marginTop: 3,
-    lineHeight: 16,
-  },
-  progressBar: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
-    zIndex: 1,
-  },
-  instructionCard: {
-    padding: 12,
-    marginBottom: 20,
-    borderColor: colors.primaryBorder,
-  },
-  instructionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  instructionText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    flex: 1,
-    fontSize: 11,
-  },
-  sectionHeader: {
-    marginBottom: 12,
-  },
-  serviceCard: {
-    padding: 14,
-    marginBottom: 10,
-  },
-  serviceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  serviceIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: colors.dangerSurface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  serviceCategory: {
-    ...typography.caption,
-    color: colors.textMuted,
+  headerSubtitle: {
+    fontSize: 12,
+    color: "#94A3B8",
     marginTop: 2,
   },
-  callBtn: {
-    flexDirection: "row",
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 30,
     alignItems: "center",
-    backgroundColor: colors.danger,
-    borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    gap: 6,
   },
-  callBtnText: {
+  concentricWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 18,
+  },
+  outerGlowRing: {
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: "rgba(255, 77, 94, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  middleGlowRing: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(255, 77, 94, 0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pulsingWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sosCenterButton: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "#FF4D5E",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#FF4D5E",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  sosHoldPrompt: {
     fontSize: 12,
     fontWeight: "800",
-    color: colors.white,
+    color: "#FFFFFF",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  warningBanner: {
+    width: "100%",
+    backgroundColor: "rgba(255, 77, 94, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 77, 94, 0.3)",
+    borderRadius: radius.card,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  warningText: {
+    fontSize: 12,
+    color: "#FF8A96",
+    textAlign: "center",
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  sectionHeader: {
+    width: "100%",
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  contactsContainer: {
+    width: "100%",
+    gap: 10,
+  },
+  contactCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  contactIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 77, 94, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginLeft: 12,
+  },
+  contactCallRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  contactNumber: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FF4D5E",
   },
 });

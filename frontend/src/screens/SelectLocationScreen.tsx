@@ -22,7 +22,7 @@ import CosmicBackground from '../components/common/CosmicBackground';
 import ScreenHeader from '../components/common/ScreenHeader';
 import SurfaceCard from '../components/common/SurfaceCard';
 import AppIcon from '../components/common/AppIcon';
-import GlowButton from '../components/common/GlowButton';
+import { PrimaryButton } from '../components/common/Buttons';
 import { useLocationContext } from '../context/LocationContext';
 import locationService, { LocationSearchResult } from '../services/locationService';
 import { POPULAR_TRAVEL_LOCATIONS, CuratedLocation } from '../services/locationConstants';
@@ -214,10 +214,9 @@ export default function SelectLocationScreen() {
               </Text>
             </View>
 
-            <GlowButton
+            <PrimaryButton
               title="Confirm Location"
               icon="checkmark-circle"
-              variant="primary"
               size="md"
               onPress={handleConfirmSelection}
               style={{ marginTop: 12 }}
@@ -311,7 +310,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 10,
     fontSize: 14,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   useGpsBtn: {
     flexDirection: 'row',
@@ -370,7 +369,7 @@ const styles = StyleSheet.create({
   },
   previewName: {
     ...typography.h4,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   previewAddress: {
     ...typography.caption,
@@ -455,7 +454,7 @@ const styles = StyleSheet.create({
   resultItemName: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.white,
+    color: colors.textPrimary,
   },
   resultItemAddress: {
     fontSize: 11,

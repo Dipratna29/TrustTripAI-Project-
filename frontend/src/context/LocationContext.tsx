@@ -14,6 +14,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -76,6 +77,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [permissionState, setPermissionState] = useState<LocationPermissionState>('not-requested');
   const [fallbackVisible, setFallbackVisible] = useState<boolean>(false);
   const [fallbackReason, setFallbackReason] = useState<FallbackReason>(null);
+  const lastGeocodedRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   /**
    * Load saved manual location from AsyncStorage on startup
@@ -102,7 +104,8 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
             setManualLocationState(manualLoc);
 
-            if (savedMode === 'manual' || !savedMode) {
+            // Only restore a manual location the user explicitly chose; otherwise prefer live GPS
+            if (savedMode === 'manual') {
               setActiveLocation(manualLoc);
               setIsManual(true);
               setGpsStatus('MANUAL');
@@ -188,12 +191,14 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
           // Get human-readable place name
           const rev = await locationService.reverseGeocodeCoords(coords.latitude, coords.longitude);
+          lastGeocodedRef.current = { latitude: coords.latitude, longitude: coords.longitude };
 
           const gpsLoc: ActiveLocation = {
             latitude: coords.latitude,
             longitude: coords.longitude,
             name: rev.name || 'Current GPS Location',
             address: rev.address,
+            locality: rev.locality,
             source: 'GPS',
             accuracy: coords.accuracy,
             timestamp: Date.now(),
@@ -239,6 +244,65 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
     },
     [isManual]
   );
+
+  /**
+   * Keep the GPS location live while the app is in GPS mode, so it stays exact as the
+   * traveler moves (previously it was captured once at launch and went stale).
+   */
+  const trackingActive = !isManual && gpsStatus === 'ACTIVE';
+
+  useEffect(() => {
+    if (!trackingActive) return;
+
+    const metersBetween = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+      const R = 6371000;
+      const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+      const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
+      const h =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((a.latitude * Math.PI) / 180) * Math.cos((b.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    };
+
+    const stop = locationService.watchLocation(
+      async (coords) => {
+        // Ignore very coarse fixes so a network-only reading doesn't replace a good GPS fix
+        if ((coords.accuracy ?? 0) > 100) return;
+        setGpsCoordinates(coords);
+
+        let name: string | undefined;
+        let address: string | undefined;
+        let locality: string | undefined;
+        const last = lastGeocodedRef.current;
+        if (!last || metersBetween(last, coords) > 150) {
+          lastGeocodedRef.current = { latitude: coords.latitude, longitude: coords.longitude };
+          const rev = await locationService.reverseGeocodeCoords(coords.latitude, coords.longitude);
+          name = rev.name;
+          address = rev.address;
+          locality = rev.locality;
+        }
+
+        setActiveLocation((prev) =>
+          prev && prev.source === 'GPS'
+            ? {
+                ...prev,
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+                accuracy: coords.accuracy,
+                name: name ?? prev.name,
+                address: address ?? prev.address,
+                locality: locality ?? prev.locality,
+                timestamp: Date.now(),
+              }
+            : prev
+        );
+      },
+      () => {},
+      { updateIntervalMs: 15000 }
+    );
+
+    return stop;
+  }, [trackingActive]);
 
   /**
    * Set and persist manual location across all features

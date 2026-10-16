@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,20 +6,15 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
-  Dimensions,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import CosmicBackground from "../../components/common/CosmicBackground";
-import SurfaceCard from "../../components/common/SurfaceCard";
-import ScreenHeader from "../../components/common/ScreenHeader";
 import AppIcon from "../../components/common/AppIcon";
-import { StatusBadge } from "../../components/common/StatusIndicator";
 import CustomBottomNav from "../../components/common/CustomBottomNav";
-import ActiveLocationBar from "../../components/common/ActiveLocationBar";
 import { useLocationContext } from "../../context/LocationContext";
-import { colors, typography, radius, spacing } from "../../theme";
+import { colors, radius } from "../../theme";
 
-const { width } = Dimensions.get("window");
+const TABS = ["Nearby", "Helplines", "Amenities"];
 
 const FACILITIES = [
   {
@@ -29,7 +24,11 @@ const FACILITIES = [
     distance: "0.4 km",
     available: true,
     icon: "shield-checkmark",
-    statusLabel: "AVAILABLE",
+    iconBg: "rgba(0, 208, 156, 0.12)",
+    iconColor: "#00C292",
+    statusLabel: "Available",
+    badgeBg: "rgba(0, 208, 156, 0.12)",
+    badgeColor: "#00C292",
   },
   {
     id: "2",
@@ -38,137 +37,165 @@ const FACILITIES = [
     distance: "0.8 km",
     available: true,
     icon: "heart",
-    statusLabel: "AVAILABLE",
+    iconBg: "rgba(236, 72, 153, 0.12)",
+    iconColor: "#EC4899",
+    statusLabel: "Available",
+    badgeBg: "rgba(0, 208, 156, 0.12)",
+    badgeColor: "#00C292",
   },
   {
     id: "3",
-    name: "Transit Changing Station",
-    category: "Rest Station",
+    name: "Police Help Center",
+    category: "24/7 Security",
     distance: "1.2 km",
-    available: false,
-    icon: "cube",
-    statusLabel: "OCCUPIED",
+    available: true,
+    icon: "shield",
+    iconBg: "rgba(59, 130, 246, 0.12)",
+    iconColor: "#3B82F6",
+    statusLabel: "On Duty",
+    badgeBg: "rgba(59, 130, 246, 0.12)",
+    badgeColor: "#3B82F6",
   },
   {
     id: "4",
-    name: "Tourist Police Help Post",
-    category: "24/7 Security",
-    distance: "0.3 km",
+    name: "Safe Transport Zone",
+    category: "Rest Station",
+    distance: "1.5 km",
     available: true,
-    icon: "shield",
-    statusLabel: "ON DUTY",
+    icon: "car",
+    iconBg: "rgba(16, 185, 129, 0.12)",
+    iconColor: "#10B981",
+    statusLabel: "Available",
+    badgeBg: "rgba(0, 208, 156, 0.12)",
+    badgeColor: "#00C292",
   },
 ];
 
 export default function WomenSafetyScreen() {
   const navigation = useNavigation<any>();
-  const { activeLocation, isManual } = useLocationContext();
+  const [activeTab, setActiveTab] = useState("Nearby");
+  const { activeLocation } = useLocationContext();
 
   const callNumber = (number: string) => {
     Linking.openURL(`tel:${number}`).catch(() => {});
   };
 
   return (
-    <CosmicBackground>
-      <ScreenHeader
-        title="Women Safety Guardian"
-        subtitle="Verified safe zones, helplines & amenities"
-        showBack
-        onBack={() => navigation.goBack()}
-      />
+    <CosmicBackground variant="dark">
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          accessibilityLabel="Back"
+        >
+          <AppIcon name="arrow-back" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.headerTitle}>Women Safety</Text>
+          <Text style={styles.headerSubtitle}>Safe spaces & helplines</Text>
+        </View>
+      </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ACTIVE LOCATION INDICATOR (GPS VS MANUAL) */}
-        <ActiveLocationBar style={{ marginBottom: 12 }} />
+        {/* LOCATION SELECTOR BAR */}
+        <TouchableOpacity
+          style={styles.locationBar}
+          onPress={() => navigation.navigate("SelectLocation")}
+          activeOpacity={0.8}
+        >
+          <AppIcon name="location-outline" size={16} color="#00C292" />
+          <Text style={styles.locationText} numberOfLines={1}>
+            {activeLocation ? activeLocation.locality || activeLocation.name : "Location not set"}
+          </Text>
+          <AppIcon name="chevron-down" size={16} color="#94A3B8" />
+        </TouchableOpacity>
 
-        {/* 24/7 HELPLINE EMERGENCY BAR */}
-        <SurfaceCard style={styles.helplineCard} variant="elevated">
-          <View style={styles.helplineHeader}>
-            <View style={styles.helplineIconCircle}>
-              <AppIcon name="call" size={20} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={typography.h4}>24/7 Dedicated Helplines</Text>
-              <Text style={styles.helplineSub}>Instant connection to verified response units</Text>
-            </View>
-          </View>
+        {/* TABS ROW */}
+        <View style={styles.tabsRow}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tabChip, isActive && styles.tabChipActive]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabChipText, isActive && styles.tabChipTextActive]}>
+                  {tab}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-          <View style={styles.helplineBtnsRow}>
+        {/* 24/7 HELPLINES (IF ON HELPLINES TAB) */}
+        {activeTab === "Helplines" && (
+          <View style={styles.helplinesContainer}>
             <TouchableOpacity
-              style={styles.helplineBtn}
+              style={styles.helplineCard}
               onPress={() => callNumber("1091")}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <AppIcon name="call" size={16} color={colors.background} />
-              <Text style={styles.helplineBtnText}>1091 (Women Help)</Text>
+              <View style={[styles.facilityIconCircle, { backgroundColor: "rgba(236, 72, 153, 0.12)" }]}>
+                <AppIcon name="heart" size={20} color="#EC4899" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.facilityName}>1091 (Women Helpline)</Text>
+                <Text style={styles.facilityDistance}>National 24/7 Rapid Response</Text>
+              </View>
+              <AppIcon name="call" size={18} color="#00C292" />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.helplineBtn, { backgroundColor: colors.cream }]}
+              style={styles.helplineCard}
               onPress={() => callNumber("112")}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <AppIcon name="shield" size={16} color={colors.background} />
-              <Text style={styles.helplineBtnText}>112 (National SOS)</Text>
+              <View style={[styles.facilityIconCircle, { backgroundColor: "rgba(255, 77, 94, 0.12)" }]}>
+                <AppIcon name="shield" size={20} color="#FF4D5E" />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.facilityName}>112 (National Emergency)</Text>
+                <Text style={styles.facilityDistance}>All-in-one Police & Ambulance</Text>
+              </View>
+              <AppIcon name="call" size={18} color="#FF4D5E" />
             </TouchableOpacity>
           </View>
-        </SurfaceCard>
+        )}
 
-        {/* VERIFIED SAFE FACILITIES */}
-        <View style={styles.sectionHeader}>
-          <Text style={typography.h3}>Verified Safe Locations</Text>
-          <Text style={styles.countBadge}>{FACILITIES.length} Nearby</Text>
-        </View>
-
-        <View style={styles.facilitiesGrid}>
-          {FACILITIES.map((facility) => (
-            <SurfaceCard
-              key={facility.id}
-              style={styles.facilityCard}
-              onPress={() => navigation.navigate("WomenSafetyDetail", { facility })}
-            >
-              <View style={styles.facilityTopRow}>
-                <View style={styles.facilityIconWrap}>
-                  <AppIcon name={facility.icon} size={20} color={colors.primary} />
+        {/* FACILITIES LIST (WHITE CARDS AS IN MOCKUP) */}
+        {activeTab !== "Helplines" && (
+          <View style={styles.facilitiesList}>
+            {FACILITIES.map((facility) => (
+              <TouchableOpacity
+                key={facility.id}
+                style={styles.facilityCard}
+                onPress={() => navigation.navigate("WomenSafetyDetail", { facility })}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.facilityIconCircle, { backgroundColor: facility.iconBg }]}>
+                  <AppIcon name={facility.icon} size={22} color={facility.iconColor} />
                 </View>
-                <StatusBadge
-                  label={facility.statusLabel}
-                  status={facility.available ? "ready" : "moderate"}
-                />
-              </View>
 
-              <Text style={styles.facilityName}>{facility.name}</Text>
-              <Text style={styles.facilityCategory}>{facility.category}</Text>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.facilityName}>{facility.name}</Text>
+                  <Text style={styles.facilityDistance}>{facility.distance}</Text>
+                </View>
 
-              <View style={styles.distanceRow}>
-                <AppIcon name="location-outline" size={14} color={colors.textMuted} />
-                <Text style={styles.distanceText}>{facility.distance} away</Text>
-              </View>
-            </SurfaceCard>
-          ))}
-        </View>
-
-        {/* TRAVEL TIPS */}
-        <SurfaceCard style={styles.tipsCard}>
-          <View style={styles.tipsHeader}>
-            <AppIcon name="shield-checkmark" size={20} color={colors.cream} />
-            <Text style={[typography.h4, { color: colors.cream, marginLeft: 8 }]}>
-              Safety Recommendations
-            </Text>
+                <View style={[styles.statusBadge, { backgroundColor: facility.badgeBg }]}>
+                  <Text style={[styles.statusBadgeText, { color: facility.badgeColor }]}>
+                    {facility.statusLabel}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
-          <Text style={styles.tipItem}>
-            • Share your live location with trusted emergency contacts when moving at night.
-          </Text>
-          <Text style={styles.tipItem}>
-            • TrustTrip verified safe zones have continuous CCTV and security presence.
-          </Text>
-          <Text style={styles.tipItem}>
-            • The Emergency SOS button broadcasts your telemetry coordinates instantly.
-          </Text>
-        </SurfaceCard>
+        )}
       </ScrollView>
 
       {/* BOTTOM NAV */}
@@ -178,124 +205,136 @@ export default function WomenSafetyScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
+    backgroundColor: "#0B1120",
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
   scrollContent: {
-    paddingHorizontal: spacing.screenPadding,
+    paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 32,
   },
-  helplineCard: {
-    marginBottom: 20,
-    padding: 16,
-    borderColor: colors.primaryBorder,
-  },
-  helplineHeader: {
+  locationBar: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  helplineIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.primaryGlow,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  helplineSub: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  helplineBtnsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 14,
-  },
-  helplineBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius.button,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: radius.pill,
     paddingVertical: 10,
-    gap: 6,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    marginBottom: 16,
   },
-  helplineBtnText: {
+  locationText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#F8FAFC",
+    marginLeft: 8,
+  },
+  tabsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 18,
+  },
+  tabChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  tabChipActive: {
+    backgroundColor: "#00C292",
+    borderColor: "#00C292",
+  },
+  tabChipText: {
     fontSize: 12,
-    fontWeight: "800",
-    color: colors.background,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  countBadge: {
-    ...typography.caption,
-    color: colors.primary,
     fontWeight: "700",
+    color: "#94A3B8",
   },
-  facilitiesGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 20,
+  tabChipTextActive: {
+    color: "#FFFFFF",
+  },
+  facilitiesList: {
+    gap: 12,
   },
   facilityCard: {
-    width: (width - spacing.screenPadding * 2 - 10) / 2,
-    padding: 14,
-  },
-  facilityTopRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  facilityIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: `${colors.primary}18`,
+  facilityIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
   facilityName: {
-    ...typography.h4,
-    fontSize: 13,
-    color: colors.white,
-    minHeight: 36,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
   },
-  facilityCategory: {
-    ...typography.caption,
-    color: colors.textMuted,
-    fontSize: 10,
+  facilityDistance: {
+    fontSize: 12,
+    color: "#64748B",
     marginTop: 2,
   },
-  distanceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 10,
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
   },
-  distanceText: {
-    ...typography.caption,
+  statusBadgeText: {
     fontSize: 11,
-    color: colors.textSecondary,
+    fontWeight: "800",
   },
-  tipsCard: {
-    padding: 16,
-    borderColor: "rgba(251, 226, 180, 0.2)",
+  helplinesContainer: {
+    gap: 12,
   },
-  tipsHeader: {
+  helplineCard: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
-  },
-  tipItem: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginTop: 4,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
 });

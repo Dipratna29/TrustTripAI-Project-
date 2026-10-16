@@ -1,45 +1,48 @@
 import React, { ReactNode } from "react";
 import { View, StyleSheet, StatusBar, StyleProp, ViewStyle } from "react-native";
-import { colors } from "../../theme";
+import { SafeAreaView, Edge } from "react-native-safe-area-context";
 
-interface CosmicBackgroundProps {
+interface ScreenCanvasProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Kept for backwards compatibility; every screen now uses the light canvas. */
+  variant?: "dark" | "light";
   showAtmosphericGlow?: boolean;
+  /** Safe-area edges to pad. Bottom is left to CustomBottomNav / footers by default. */
+  edges?: Edge[];
 }
+
+const CANVAS = "#F8FAFC";
 
 /**
  * TrustTrip Screen Canvas Container
- * Clean, calm matte dark background (#131321) with refined subtle contrast.
+ * One light canvas (#F8FAFC) for every screen so the white cards and dark typography
+ * of the design system stay readable (the old dark canvas hid dark headings and the
+ * white cards hid white text). Uses react-native-safe-area-context so content clears
+ * the status bar and notches on Android as well as iOS.
  */
 export default function CosmicBackground({
   children,
   style,
-  showAtmosphericGlow = false,
-}: CosmicBackgroundProps) {
+  edges = ["top", "left", "right"],
+}: ScreenCanvasProps) {
   return (
-    <View style={[styles.container, style]}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} translucent={false} />
-      {showAtmosphericGlow && (
-        <View style={styles.topAtmosphere} pointerEvents="none" />
-      )}
-      {children}
-    </View>
+    <SafeAreaView edges={edges} style={[styles.safeArea, style]}>
+      <StatusBar barStyle="dark-content" backgroundColor={CANVAS} translucent={false} />
+      <View style={styles.container}>{children}</View>
+    </SafeAreaView>
   );
 }
 
+export const ScreenCanvas = CosmicBackground;
+
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: CANVAS,
+  },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-  },
-  topAtmosphere: {
-    position: "absolute",
-    top: -80,
-    left: "20%",
-    width: 240,
-    height: 180,
-    borderRadius: 120,
-    backgroundColor: "rgba(70, 240, 210, 0.04)",
+    backgroundColor: CANVAS,
   },
 });

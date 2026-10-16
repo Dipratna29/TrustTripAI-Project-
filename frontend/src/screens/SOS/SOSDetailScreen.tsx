@@ -16,7 +16,7 @@ import ScreenHeader from "../../components/common/ScreenHeader";
 import AppIcon from "../../components/common/AppIcon";
 import { StatusBadge } from "../../components/common/StatusIndicator";
 import { useLocationContext } from "../../context/LocationContext";
-import { colors, typography, radius, spacing } from "../../theme";
+import { colors, typography, radius, spacing, shadows } from "../../theme";
 
 export default function SOSDetailScreen() {
   const route = useRoute<any>();
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   serviceName: {
     ...typography.h3,
     fontSize: 16,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   serviceSub: {
     ...typography.caption,
@@ -207,14 +207,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.primary,
     borderRadius: radius.button,
-    paddingVertical: 15,
+    paddingVertical: 14,
     gap: 8,
+    ...shadows.glowPrimary,
   },
   directCallText: {
-    fontFamily: typography.button.fontFamily,
+    ...typography.button,
     fontSize: 16,
-    fontWeight: "800",
-    color: colors.background,
+    fontWeight: "600",
+    color: colors.white,
   },
   sosAlertBtn: {
     flexDirection: "row",
@@ -222,13 +223,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.danger,
     borderRadius: radius.button,
-    paddingVertical: 15,
+    paddingVertical: 14,
     gap: 8,
+    ...shadows.glowDanger,
   },
   sosAlertText: {
-    fontFamily: typography.button.fontFamily,
+    ...typography.button,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
     color: colors.white,
   },
   guideCard: {

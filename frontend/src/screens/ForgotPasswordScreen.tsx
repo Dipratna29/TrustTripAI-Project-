@@ -39,7 +39,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
     }
 
     setLoading(true);
-    // Simulate safety account lookup & instructions dispatch
+    // No reset endpoint exists yet: show support instructions instead of pretending a reset was sent
     setTimeout(() => {
       setLoading(false);
       setSubmitted(true);
@@ -84,11 +84,11 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
               </View>
 
               <Text style={styles.headerTitle}>
-                {submitted ? "Recovery Request Received" : "Reset Password"}
+                {submitted ? "Contact Support to Reset" : "Reset Password"}
               </Text>
               <Text style={styles.headerSubtitle}>
                 {submitted
-                  ? `Security instructions have been generated for ${identifier.trim()}. For traveler identity protection, our support team or SMS service will assist your password recovery.`
+                  ? `Automated password reset is not available yet. Email support@trusttrip.com from your registered contact with your username (${identifier.trim()}) and our team will verify your identity and reset your password.`
                   : "Enter your registered username or phone number to verify your traveler credentials."}
               </Text>
 
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.displayLarge.fontFamily,
     fontSize: 22,
     fontWeight: "900",
-    color: colors.white,
+    color: colors.textPrimary,
   },
   card: {
     padding: 24,
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.h2,
     fontSize: 22,
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: "center",
   },
   headerSubtitle: {
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: colors.primary,
     borderRadius: radius.button,
-    paddingVertical: 15,
+    paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,
@@ -272,10 +272,10 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   primaryBtnText: {
-    fontFamily: typography.button.fontFamily,
-    color: colors.background,
+    ...typography.button,
+    color: colors.white,
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "600",
   },
   btnLoadingRow: {
     flexDirection: "row",

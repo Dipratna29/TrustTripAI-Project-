@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: 8,
   },

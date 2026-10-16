@@ -21,13 +21,24 @@ import CustomBottomNav from "../components/common/CustomBottomNav";
 import { colors, typography, radius, spacing } from "../theme";
 
 const LANGUAGES = [
-  { label: "English", value: "en" },
-  { label: "Hindi", value: "hi" },
-  { label: "Marathi", value: "mr" },
-  { label: "French", value: "fr" },
-  { label: "German", value: "de" },
-  { label: "Spanish", value: "es" },
+  { label: "English", value: "en", speech: "en-IN" },
+  { label: "Hindi", value: "hi", speech: "hi-IN" },
+  { label: "Marathi", value: "mr", speech: "mr-IN" },
+  { label: "Bengali", value: "bn", speech: "bn-IN" },
+  { label: "Tamil", value: "ta", speech: "ta-IN" },
+  { label: "Telugu", value: "te", speech: "te-IN" },
+  { label: "Kannada", value: "kn", speech: "kn-IN" },
+  { label: "Gujarati", value: "gu", speech: "gu-IN" },
+  { label: "French", value: "fr", speech: "fr-FR" },
+  { label: "German", value: "de", speech: "de-DE" },
+  { label: "Spanish", value: "es", speech: "es-ES" },
+  { label: "Japanese", value: "ja", speech: "ja-JP" },
 ];
+
+const SOURCE_LANGUAGES = [{ label: "Auto-detect", value: "auto", speech: "en-IN" }, ...LANGUAGES];
+
+const labelFor = (code: string) => SOURCE_LANGUAGES.find((l) => l.value === code)?.label ?? code;
+const speechLocaleFor = (code: string) => SOURCE_LANGUAGES.find((l) => l.value === code)?.speech ?? code;
 
 const COMMON_PHRASES = [
   { category: "Emergency", phrase: "I need medical help" },
@@ -37,13 +48,20 @@ const COMMON_PHRASES = [
 ];
 
 export default function LanguageScreen() {
+  const navigation = useNavigation<any>();
   const [text, setText] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("en");
   const [targetLanguage, setTargetLanguage] = useState("hi");
   const [translatedText, setTranslatedText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pickerMode, setPickerMode] = useState<"source" | "target">("target");
 
   const swapLanguages = () => {
+    if (sourceLanguage === "auto") {
+      Alert.alert("Choose a language", "Pick a specific source language before swapping.");
+      return;
+    }
     const temp = sourceLanguage;
     setSourceLanguage(targetLanguage);
     setTargetLanguage(temp);
@@ -51,34 +69,59 @@ export default function LanguageScreen() {
     setTranslatedText(text);
   };
 
-  const handleTranslate = async (textToTranslate?: string) => {
-    const query = (textToTranslate || text).trim();
+  // Languages are passed explicitly so a chip tap translates with the *new* selection
+  // (reading state right after setState used the stale value).
+  const handleTranslate = async (
+    textToTranslate?: string,
+    source: string = sourceLanguage,
+    target: string = targetLanguage
+  ) => {
+    const query = (textToTranslate ?? text).trim();
     if (!query) return;
 
     setLoading(true);
+    setError(null);
     try {
-      const res = await api.post("/translate", {
-        text: query,
-        source_language: sourceLanguage,
-        target_language: targetLanguage,
-      });
+      const res = await api.post(
+        "/translate",
+        { text: query, source_language: source, target_language: target },
+        { timeout: 20000 }
+      );
 
-      if (res.data && res.data.translated_text) {
-        setTranslatedText(res.data.translated_text);
+      const result = res.data?.translated_text ?? res.data?.translation;
+      if (res.data?.success && result) {
+        setTranslatedText(result);
       } else {
-        setTranslatedText(query); // Fallback
+        setTranslatedText("");
+        setError(res.data?.message || "Translation failed. Please try again.");
       }
-    } catch {
-      // Fallback
-      setTranslatedText(query);
+    } catch (err: any) {
+      setTranslatedText("");
+      setError(
+        err?.response?.data?.message ||
+          (err?.request
+            ? "Can't reach the server. Check your internet connection."
+            : "Translation failed. Please try again.")
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const selectLanguage = (code: string) => {
+    if (pickerMode === "source") {
+      setSourceLanguage(code);
+      if (text.trim()) handleTranslate(undefined, code, targetLanguage);
+    } else {
+      setTargetLanguage(code);
+      if (text.trim()) handleTranslate(undefined, sourceLanguage, code);
+    }
+  };
+
   const speakText = (content: string, lang: string) => {
     if (!content) return;
-    Speech.speak(content, { language: lang });
+    Speech.stop();
+    Speech.speak(content, { language: speechLocaleFor(lang) });
   };
 
   const copyToClipboard = async (content: string) => {
@@ -87,59 +130,71 @@ export default function LanguageScreen() {
     Alert.alert("Copied", "Text copied to clipboard.");
   };
 
+  const chipOptions = pickerMode === "source" ? SOURCE_LANGUAGES : LANGUAGES;
+  const selectedCode = pickerMode === "source" ? sourceLanguage : targetLanguage;
+
   return (
     <CosmicBackground>
       <ScreenHeader
         title="Travel Translator"
         subtitle="Real-time translation & voice pronouncer"
+        showBack
+        onBack={() => navigation.goBack()}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* LANGUAGE SELECTOR BAR */}
         <SurfaceCard style={styles.selectorCard} variant="elevated">
           <View style={styles.langSelectorRow}>
-            <View style={styles.langPickerCol}>
-              <Text style={styles.pickerLabel}>FROM</Text>
-              <Text style={styles.pickerVal}>
-                {LANGUAGES.find((l) => l.value === sourceLanguage)?.label ?? "English"}
-              </Text>
-            </View>
-
             <TouchableOpacity
-              style={styles.swapBtn}
-              onPress={swapLanguages}
-              activeOpacity={0.7}
+              style={[styles.langPickerCol, pickerMode === "source" && styles.langPickerColActive]}
+              onPress={() => setPickerMode("source")}
+              activeOpacity={0.75}
             >
+              <Text style={styles.pickerLabel}>FROM</Text>
+              <Text style={styles.pickerVal} numberOfLines={1}>
+                {labelFor(sourceLanguage)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.swapBtn} onPress={swapLanguages} activeOpacity={0.7}>
               <AppIcon name="refresh" size={18} color={colors.primary} />
             </TouchableOpacity>
 
-            <View style={[styles.langPickerCol, { alignItems: "flex-end" }]}>
+            <TouchableOpacity
+              style={[
+                styles.langPickerCol,
+                { alignItems: "flex-end" },
+                pickerMode === "target" && styles.langPickerColActive,
+              ]}
+              onPress={() => setPickerMode("target")}
+              activeOpacity={0.75}
+            >
               <Text style={styles.pickerLabel}>TO</Text>
-              <Text style={[styles.pickerVal, { color: colors.primary }]}>
-                {LANGUAGES.find((l) => l.value === targetLanguage)?.label ?? "Hindi"}
+              <Text style={[styles.pickerVal, { color: colors.primary }]} numberOfLines={1}>
+                {labelFor(targetLanguage)}
               </Text>
-            </View>
+            </TouchableOpacity>
           </View>
 
-          {/* QUICK TARGET LANGUAGE CHIPS */}
+          {/* LANGUAGE CHIPS (apply to the highlighted FROM / TO side) */}
+          <Text style={styles.chipsHint}>
+            Tap FROM or TO, then choose the {pickerMode === "source" ? "source" : "target"} language
+          </Text>
           <View style={styles.chipsRow}>
-            {LANGUAGES.map((l) => {
-              const isSel = targetLanguage === l.value;
+            {chipOptions.map((l) => {
+              const isSel = selectedCode === l.value;
               return (
                 <TouchableOpacity
                   key={l.value}
                   style={[styles.chip, isSel && styles.chipActive]}
-                  onPress={() => {
-                    setTargetLanguage(l.value);
-                    if (text) handleTranslate();
-                  }}
+                  onPress={() => selectLanguage(l.value)}
                 >
-                  <Text style={[styles.chipText, isSel && styles.chipTextActive]}>
-                    {l.label}
-                  </Text>
+                  <Text style={[styles.chipText, isSel && styles.chipTextActive]}>{l.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -156,19 +211,32 @@ export default function LanguageScreen() {
             placeholderTextColor={colors.textMuted}
             value={text}
             onChangeText={setText}
+            maxLength={4500}
           />
 
           <View style={styles.ioCardFooter}>
+            {text ? (
+              <TouchableOpacity
+                style={styles.clearBtn}
+                onPress={() => {
+                  setText("");
+                  setTranslatedText("");
+                  setError(null);
+                }}
+              >
+                <Text style={styles.clearBtnText}>Clear</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              style={[styles.translateBtn, loading && styles.btnDisabled]}
+              style={[styles.translateBtn, (loading || !text.trim()) && styles.btnDisabled]}
               onPress={() => handleTranslate()}
               disabled={loading || !text.trim()}
             >
               {loading ? (
-                <ActivityIndicator size="small" color={colors.background} />
+                <ActivityIndicator size="small" color={colors.white} />
               ) : (
                 <>
-                  <AppIcon name="language" size={16} color={colors.background} />
+                  <AppIcon name="language" size={16} color={colors.white} />
                   <Text style={styles.translateBtnText}>Translate</Text>
                 </>
               )}
@@ -176,11 +244,22 @@ export default function LanguageScreen() {
           </View>
         </SurfaceCard>
 
+        {error ? (
+          <SurfaceCard style={[styles.ioCard, styles.errorCard]}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={() => handleTranslate()} style={{ marginTop: 8 }}>
+              <Text style={styles.actionBtnText}>Try again</Text>
+            </TouchableOpacity>
+          </SurfaceCard>
+        ) : null}
+
         {/* OUTPUT CARD */}
         {translatedText ? (
           <SurfaceCard style={[styles.ioCard, styles.outputCard]} variant="elevated">
-            <Text style={styles.outputLabel}>TRANSLATION</Text>
-            <Text style={styles.outputText}>{translatedText}</Text>
+            <Text style={styles.outputLabel}>TRANSLATION · {labelFor(targetLanguage).toUpperCase()}</Text>
+            <Text style={styles.outputText} selectable>
+              {translatedText}
+            </Text>
 
             <View style={styles.actionsRow}>
               <TouchableOpacity
@@ -191,10 +270,7 @@ export default function LanguageScreen() {
                 <Text style={styles.actionBtnText}>Listen</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.actionIconBtn}
-                onPress={() => copyToClipboard(translatedText)}
-              >
+              <TouchableOpacity style={styles.actionIconBtn} onPress={() => copyToClipboard(translatedText)}>
                 <AppIcon name="copy" size={18} color={colors.textSecondary} />
                 <Text style={[styles.actionBtnText, { color: colors.textSecondary }]}>Copy</Text>
               </TouchableOpacity>
@@ -213,7 +289,9 @@ export default function LanguageScreen() {
             style={styles.phraseItem}
             onPress={() => {
               setText(item.phrase);
-              handleTranslate(item.phrase);
+              // Phrases are English, so translate from English regardless of the FROM selection
+              setSourceLanguage("en");
+              handleTranslate(item.phrase, "en", targetLanguage);
             }}
             activeOpacity={0.75}
           >
@@ -227,7 +305,7 @@ export default function LanguageScreen() {
       </ScrollView>
 
       {/* BOTTOM NAV */}
-      <CustomBottomNav activeTab="Home" navigation={useNavigation()} />
+      <CustomBottomNav activeTab="Home" navigation={navigation} />
     </CosmicBackground>
   );
 }
@@ -236,7 +314,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 110,
   },
   selectorCard: {
     padding: 16,
@@ -247,9 +325,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 8,
   },
   langPickerCol: {
     flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  langPickerColActive: {
+    borderColor: colors.primaryBorder,
+    backgroundColor: `${colors.primary}10`,
   },
   pickerLabel: {
     fontSize: 10,
@@ -259,7 +347,7 @@ const styles = StyleSheet.create({
   },
   pickerVal: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 4,
   },
   swapBtn: {
@@ -272,17 +360,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primaryBorder,
   },
+  chipsHint: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: 12,
+  },
   chipsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 14,
-    paddingTop: 14,
+    marginTop: 8,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   chip: {
-    paddingVertical: 4,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: radius.pill,
     backgroundColor: colors.surfaceElevated,
@@ -296,7 +389,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   chipTextActive: {
-    color: colors.background,
+    color: colors.white,
     fontWeight: "800",
   },
   ioCard: {
@@ -312,7 +405,18 @@ const styles = StyleSheet.create({
   ioCardFooter: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 12,
     marginTop: 10,
+  },
+  clearBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  clearBtnText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: "700",
   },
   translateBtn: {
     flexDirection: "row",
@@ -330,7 +434,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.button.fontFamily,
     fontSize: 13,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
+  },
+  errorCard: {
+    borderColor: colors.danger,
+  },
+  errorText: {
+    ...typography.bodySm,
+    color: colors.danger,
   },
   outputCard: {
     borderColor: colors.primaryBorder,
@@ -345,8 +456,8 @@ const styles = StyleSheet.create({
   outputText: {
     ...typography.h3,
     fontSize: 18,
-    color: colors.white,
-    lineHeight: 26,
+    color: colors.textPrimary,
+    lineHeight: 28,
   },
   actionsRow: {
     flexDirection: "row",

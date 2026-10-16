@@ -14,6 +14,7 @@ import {
   clearStoredPushToken,
 } from "../services/pushNotificationService";
 import { getFriendlyErrorMessage } from "../utils/apiError";
+import { getAuthToken, setAuthToken, setUnauthorizedHandler } from "../services/authToken";
 
 export interface UserProfile {
   id: number | string;
@@ -26,6 +27,7 @@ export interface UserProfile {
   status?: string;
   address?: string;
   emergency_contact?: string;
+  profile_photo_url?: string | null;
   [key: string]: any;
 }
 
@@ -54,6 +56,7 @@ export interface AuthContextType {
   ) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<UserProfile | null>;
+  updateUser: (patch: Partial<UserProfile>) => Promise<void>;
   clearAuthError: () => void;
 }
 
@@ -96,8 +99,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const storedUserStr = await AsyncStorage.getItem(STORAGE_USER_KEY);
       const parsedUser = safeParseUser(storedUserStr);
+      const token = await getAuthToken();
 
-      if (!parsedUser) {
+      if (!parsedUser || !token) {
+        // Sessions created before signed tokens existed must sign in again
+        if (parsedUser && !token) {
+          await AsyncStorage.removeItem(STORAGE_USER_KEY);
+          setAuthError("For your security, please sign in again.");
+        }
         setUser(null);
         setIsLoading(false);
         return;
@@ -189,7 +198,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             return { success: false, message: blockedMsg };
           }
 
+          if (!data.token) {
+            const msg = "Server did not return a session. Please update the app/server.";
+            setAuthError(msg);
+            return { success: false, message: msg };
+          }
+
           // Persist user session
+          await setAuthToken(data.token);
           await AsyncStorage.setItem(
             STORAGE_USER_KEY,
             JSON.stringify(authenticatedUser)
@@ -267,8 +283,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    */
   const logout = useCallback(async () => {
     try {
-      await AsyncStorage.removeItem(STORAGE_USER_KEY);
       await clearStoredPushToken().catch(() => {});
+      await AsyncStorage.removeItem(STORAGE_USER_KEY);
+      await setAuthToken(null);
     } catch (e) {
       console.log("[AuthContext] Error clearing storage during logout:", e);
     } finally {
@@ -302,8 +319,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return user;
   }, [user]);
 
+  const updateUser = useCallback(async (patch: Partial<UserProfile>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const merged = { ...prev, ...patch };
+      AsyncStorage.setItem(STORAGE_USER_KEY, JSON.stringify(merged)).catch(() => {});
+      return merged;
+    });
+  }, []);
+
   const clearAuthError = useCallback(() => {
     setAuthError(null);
+  }, []);
+
+  // An invalid/expired token returned 401 from the API: end the session
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      Promise.all([AsyncStorage.removeItem(STORAGE_USER_KEY), setAuthToken(null)]).catch(() => {});
+      setUser((prev) => {
+        if (prev) setAuthError("Your session has expired. Please sign in again.");
+        return null;
+      });
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const value = useMemo<AuthContextType>(
@@ -316,9 +354,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       register,
       logout,
       refreshProfile,
+      updateUser,
       clearAuthError,
     }),
-    [user, isLoading, authError, login, register, logout, refreshProfile, clearAuthError]
+    [user, isLoading, authError, login, register, logout, refreshProfile, updateUser, clearAuthError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

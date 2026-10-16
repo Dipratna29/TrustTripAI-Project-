@@ -185,16 +185,16 @@ export const ActiveLocationBar: React.FC<ActiveLocationBarProps> = ({ style, com
   return (
     <>
       <View style={[styles.container, isManual ? styles.manualContainer : styles.gpsContainer, style]}>
+        {/* MAIN BAR */}
         <TouchableOpacity
           style={styles.contentWrap}
-          onPress={handleOpenMenu}
-          activeOpacity={0.8}
+          onPress={() => navigation.navigate('SelectLocation')}
+          activeOpacity={0.75}
         >
-          {/* ICON & STATUS BADGE */}
           <View
             style={[
               styles.iconWrap,
-              { backgroundColor: isManual ? 'rgba(251, 226, 180, 0.15)' : 'rgba(70, 240, 210, 0.15)' },
+              { backgroundColor: isManual ? colors.warningSurface : colors.primaryGlow },
             ]}
           >
             {isSearching ? (
@@ -202,8 +202,8 @@ export const ActiveLocationBar: React.FC<ActiveLocationBarProps> = ({ style, com
             ) : (
               <AppIcon
                 name={isManual ? 'pencil' : 'location'}
-                size={18}
-                color={isManual ? colors.cream : colors.primary}
+                size={16}
+                color={isManual ? colors.warning : colors.primary}
               />
             )}
           </View>
@@ -211,59 +211,37 @@ export const ActiveLocationBar: React.FC<ActiveLocationBarProps> = ({ style, com
           {/* TEXT DETAILS */}
           <View style={styles.infoWrap}>
             <View style={styles.headerRow}>
-              <View style={styles.sourceLabelRow}>
-                <AppIcon
-                  name={isManual ? 'pencil' : 'location'}
-                  size={12}
-                  color={isManual ? colors.cream : colors.primary}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.sourceLabel, { color: isManual ? colors.cream : colors.primary }]}>
-                  {isManual ? 'Manual Location' : 'GPS Location'}
-                </Text>
-              </View>
-
+              <Text
+                style={[
+                  styles.sourceLabel,
+                  { color: isManual ? colors.warning : colors.primary },
+                ]}
+              >
+                {isManual ? 'DESTINATION' : 'LIVE GPS'}
+              </Text>
               {isGpsActive && !isManual && (
                 <View style={styles.liveIndicator}>
                   <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>LIVE</Text>
+                  <Text style={styles.liveText}>ACTIVE</Text>
                 </View>
               )}
             </View>
 
             <Text style={styles.placeName} numberOfLines={1}>
-              {activeLocation?.name || (isSearching ? 'Detecting location...' : 'Location unavailable')}
+              {activeLocation?.name || (isSearching ? 'Detecting location...' : 'Select location')}
             </Text>
-
-            {activeLocation?.address ? (
-              <Text style={styles.placeAddress} numberOfLines={1}>
-                {activeLocation.address}
-              </Text>
-            ) : null}
           </View>
-        </TouchableOpacity>
 
-        {/* ACTION BUTTONS (CHANGE / RESET) */}
-        <View style={styles.actionButtonsRow}>
+          {/* ACTION BUTTON */}
           <TouchableOpacity
             style={styles.changeBtn}
             onPress={handleOpenMenu}
             activeOpacity={0.7}
           >
             <Text style={styles.changeBtnText}>Change</Text>
+            <AppIcon name="chevron-forward" size={12} color={colors.textSecondary} />
           </TouchableOpacity>
-
-          {isManual && (
-            <TouchableOpacity
-              style={styles.resetGpsBtn}
-              onPress={handleUseGps}
-              activeOpacity={0.7}
-            >
-              <AppIcon name="refresh" size={12} color={colors.primary} />
-              <Text style={styles.resetGpsBtnText}>Use GPS</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        </TouchableOpacity>
       </View>
       {renderLocationMenu()}
     </>
@@ -272,144 +250,88 @@ export const ActiveLocationBar: React.FC<ActiveLocationBarProps> = ({ style, com
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: radius.lg,
-    padding: 12,
-    marginVertical: 6,
+    borderRadius: radius.card,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginVertical: 4,
     borderWidth: 1,
   },
   gpsContainer: {
-    backgroundColor: 'rgba(32, 32, 50, 0.92)',
-    borderColor: 'rgba(70, 240, 210, 0.22)',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
   },
   manualContainer: {
-    backgroundColor: 'rgba(36, 34, 46, 0.95)',
-    borderColor: 'rgba(251, 226, 180, 0.35)',
+    backgroundColor: colors.surfaceElevated,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
   },
   contentWrap: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   infoWrap: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 10,
+    marginRight: 8,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
     marginBottom: 2,
   },
-  sourceLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   sourceLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   liveIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(70, 240, 210, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
+    backgroundColor: colors.primaryGlow,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+    gap: 4,
   },
   liveDot: {
     width: 5,
     height: 5,
     borderRadius: 2.5,
     backgroundColor: colors.primary,
-    marginRight: 4,
   },
   liveText: {
     fontSize: 9,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.primary,
-    letterSpacing: 0.5,
   },
   placeName: {
-    color: colors.white,
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 1,
-  },
-  placeAddress: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    gap: 8,
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textPrimary,
   },
   changeBtn: {
-    paddingVertical: 5,
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 3,
   },
   changeBtnText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  resetGpsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(70, 240, 210, 0.12)',
-    gap: 4,
-  },
-  resetGpsBtnText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  compactContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(32, 32, 50, 0.85)',
-    borderRadius: radius.pill,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  compactLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  compactSourceText: {
+    ...typography.caption,
     fontSize: 11,
-    fontWeight: '700',
-    marginHorizontal: 4,
-  },
-  compactNameText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '500',
-    flex: 1,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   /* MODAL */
   modalOverlay: {
@@ -477,6 +399,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  compactContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  compactLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  compactSourceText: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginHorizontal: 4,
+  },
+  compactNameText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
   },
   cancelOptionBtn: {
     paddingVertical: 12,

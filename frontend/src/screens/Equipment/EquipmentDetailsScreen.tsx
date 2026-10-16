@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,17 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../../config/api";
 import {
   createPaymentOrder,
   markPaymentFailed,
   openRazorpayCheckout,
+  placeCodOrder,
   verifyPayment,
 } from "../../services/paymentService";
 import CosmicBackground from "../../components/common/CosmicBackground";
@@ -21,41 +25,58 @@ import SurfaceCard from "../../components/common/SurfaceCard";
 import ScreenHeader from "../../components/common/ScreenHeader";
 import AppIcon from "../../components/common/AppIcon";
 import ActiveLocationBar from "../../components/common/ActiveLocationBar";
+import LeafletMap from "../../components/map/LeafletMap";
 import { useLocationContext } from "../../context/LocationContext";
+import { useAuth } from "../../context/AuthContext";
 import locationService from "../../services/locationService";
 import { StatusBadge } from "../../components/common/StatusIndicator";
+import { getFriendlyErrorMessage } from "../../utils/apiError";
 import { colors, typography, radius, shadows, spacing } from "../../theme";
+
+type PaymentMethod = "ONLINE" | "COD";
+
+const COD_MAX_QUANTITY = 10;
+const COD_MAX_ORDER_VALUE = 10000;
 
 export default function EquipmentDetailsScreen({ route, navigation }: any) {
   const { item } = route.params;
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
   const [quantity, setQuantity] = useState(1);
-  const [userLocation, setUserLocation] = useState<any>(null);
-  const [deliveryLocation, setDeliveryLocation] = useState<any>(null);
-  const [showMap, setShowMap] = useState(false);
-  const [pricePerItem, setPricePerItem] = useState(0);
+  const [deliveryPoint, setDeliveryPoint] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pricePerItem, setPricePerItem] = useState(Number(item?.price || 0));
+  const [stock, setStock] = useState<number | null>(
+    typeof item?.current_stock === "number" ? item.current_stock : null
+  );
   const [loadingPrice, setLoadingPrice] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("ONLINE");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
 
-  const { activeLocation, isManual, detectGpsLocation, showFallback } = useLocationContext();
+  const { activeLocation, showFallback } = useLocationContext();
 
-  const mapRef = useRef<MapView>(null);
-
-  // Fetch real price from backend and sync active location
+  // Fetch live price/stock and sync the delivery point with the active location
   useEffect(() => {
     fetchPrice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (activeLocation) {
-      setUserLocation({
-        latitude: activeLocation.latitude,
-        longitude: activeLocation.longitude,
-      });
-      setDeliveryLocation({
-        latitude: activeLocation.latitude + 0.005,
-        longitude: activeLocation.longitude + 0.005,
-      });
+      setDeliveryPoint({ latitude: activeLocation.latitude, longitude: activeLocation.longitude });
+      if (!address && activeLocation.address) setAddress(activeLocation.address);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLocation]);
+
+  useEffect(() => {
+    if (!phone && (user?.full_phone_number || user?.mob)) setPhone(String(user.full_phone_number || user.mob));
+    if (!address && user?.address) setAddress(String(user.address));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const fetchPrice = async () => {
     if (!item || !item.id) return;
@@ -64,44 +85,30 @@ export default function EquipmentDetailsScreen({ route, navigation }: any) {
       const res = await api.get(`/equipment/${item.id}`);
       const data = res.data;
       if (data && typeof data.price !== "undefined") setPricePerItem(Number(data.price));
-      else setPricePerItem(Number(item.price || 200));
+      if (data && typeof data.current_stock !== "undefined") setStock(Number(data.current_stock));
     } catch {
-      setPricePerItem(Number(item.price || 200));
+      // keep the list price passed from the catalogue
     } finally {
       setLoadingPrice(false);
     }
   };
 
   const totalPrice = pricePerItem * quantity;
+  const outOfStock = stock !== null && stock <= 0;
+  const maxQty = Math.max(1, Math.min(stock ?? 99, paymentMethod === "COD" ? COD_MAX_QUANTITY : 99));
+  const codBlockedReason =
+    totalPrice > COD_MAX_ORDER_VALUE
+      ? `Cash on Delivery is available for orders up to ₹${COD_MAX_ORDER_VALUE.toLocaleString("en-IN")}.`
+      : null;
 
-  // Safe location attachment without blocking alerts
-  const getLiveLocation = async () => {
-    if (activeLocation) {
-      setUserLocation({
-        latitude: activeLocation.latitude,
-        longitude: activeLocation.longitude,
-      });
-      setDeliveryLocation({
-        latitude: activeLocation.latitude + 0.005,
-        longitude: activeLocation.longitude + 0.005,
-      });
-      setShowMap(true);
-      return;
-    }
-
+  const useCurrentLocation = async () => {
     setGettingLocation(true);
     try {
       const coords = await locationService.getCurrentLocation();
       if (coords) {
-        setUserLocation({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        });
-        setDeliveryLocation({
-          latitude: coords.latitude + 0.005,
-          longitude: coords.longitude + 0.005,
-        });
-        setShowMap(true);
+        setDeliveryPoint({ latitude: coords.latitude, longitude: coords.longitude });
+        const rev = await locationService.reverseGeocodeCoords(coords.latitude, coords.longitude);
+        if (rev.address) setAddress(rev.address);
       } else {
         showFallback("unavailable");
       }
@@ -110,48 +117,63 @@ export default function EquipmentDetailsScreen({ route, navigation }: any) {
     }
   };
 
-  // Simulate delivery movement
-  useEffect(() => {
-    if (!deliveryLocation || !userLocation) return;
+  const resolveLocation = () =>
+    deliveryPoint ||
+    (activeLocation ? { latitude: activeLocation.latitude, longitude: activeLocation.longitude } : null);
 
-    const interval = setInterval(() => {
-      setDeliveryLocation((prev: any) => {
-        if (!prev) return prev;
-        return {
-          latitude: prev.latitude + (userLocation.latitude - prev.latitude) * 0.1,
-          longitude: prev.longitude + (userLocation.longitude - prev.longitude) * 0.1,
-        };
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [deliveryLocation, userLocation]);
-
-  // Authoritative Razorpay payment flow
-  const handleOrder = async () => {
-    const loc = userLocation || (activeLocation ? { latitude: activeLocation.latitude, longitude: activeLocation.longitude } : null);
-    if (!loc) {
-      showFallback('unavailable');
+  const placeCashOnDelivery = async (loc: { latitude: number; longitude: number }) => {
+    if (address.trim().length < 8) {
+      Alert.alert("Delivery address needed", "Please enter a complete delivery address (house, street, area).");
+      return;
+    }
+    if (!/^\+?[0-9\s-]{7,15}$/.test(phone.trim())) {
+      Alert.alert("Contact number needed", "Please enter a valid phone number so the courier can reach you.");
       return;
     }
 
+    setPlacingOrder(true);
+    try {
+      const result = await placeCodOrder(Number(item.id), quantity, loc, {
+        address: address.trim(),
+        phone: phone.trim(),
+      });
+      navigation.replace("PaymentSuccess", {
+        paymentMethod: "COD",
+        orderId: result.order_id,
+        amount: Math.round(Number(result.data?.total_price ?? totalPrice) * 100),
+        equipmentName: result.data?.name || item.name,
+      });
+    } catch (error: any) {
+      Alert.alert("Order not placed", getFriendlyErrorMessage(error, "Could not place your order. Please try again."));
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  // Authoritative Razorpay payment flow
+  const payOnline = async (loc: { latitude: number; longitude: number }) => {
     setPlacingOrder(true);
     let paymentOrder: Awaited<ReturnType<typeof createPaymentOrder>> | null = null;
     let checkoutCompleted = false;
     try {
       paymentOrder = await createPaymentOrder(Number(item.id), quantity, loc);
-      const checkoutResponse = await openRazorpayCheckout(paymentOrder, item.name);
+      const checkoutResponse = await openRazorpayCheckout(paymentOrder, {
+        name: user?.name || user?.username,
+        contact: phone.trim(),
+      });
       checkoutCompleted = true;
       const verified = await verifyPayment(paymentOrder.order_id, checkoutResponse);
 
       navigation.replace("PaymentSuccess", {
+        paymentMethod: "ONLINE",
         paymentId: verified.payment_id,
         orderId: verified.order_id,
         amount: paymentOrder.amount,
         equipmentName: paymentOrder.equipment_name || item.name,
       });
     } catch (error: any) {
-      const description = error?.description || error?.message || "Payment could not be completed.";
+      const description =
+        error?.description || getFriendlyErrorMessage(error, "Payment could not be completed.");
       if (paymentOrder?.order_id && !checkoutCompleted) {
         try {
           await markPaymentFailed(paymentOrder.order_id, description);
@@ -160,168 +182,255 @@ export default function EquipmentDetailsScreen({ route, navigation }: any) {
         }
       }
 
-      Alert.alert("Payment Incomplete", description, [{ text: "Try again" }]);
+      Alert.alert(
+        "Payment Incomplete",
+        `${description}\n\nYou can also choose Cash on Delivery.`,
+        [{ text: "OK" }]
+      );
     } finally {
       setPlacingOrder(false);
     }
   };
 
+  const handleOrder = () => {
+    if (outOfStock) {
+      Alert.alert("Out of stock", "This item is currently out of stock.");
+      return;
+    }
+    const loc = resolveLocation();
+    if (!loc) {
+      showFallback("unavailable");
+      return;
+    }
+
+    if (paymentMethod === "COD") {
+      if (codBlockedReason) {
+        Alert.alert("Cash on Delivery unavailable", `${codBlockedReason} Please pay online.`);
+        return;
+      }
+      Alert.alert(
+        "Confirm Cash on Delivery",
+        `${quantity} × ${item.name}\nAmount to pay at delivery: ₹${totalPrice.toFixed(2)}\n\nDeliver to:\n${address.trim() || "your current location"}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Place Order", onPress: () => placeCashOnDelivery(loc) },
+        ]
+      );
+      return;
+    }
+
+    payOnline(loc);
+  };
+
   return (
     <CosmicBackground>
-      <ScreenHeader
-        title="Equipment Checkout"
-        subtitle={item.name}
-        showBack
-        onBack={() => navigation.goBack()}
-      />
+      <ScreenHeader title="Equipment Checkout" subtitle={item.name} showBack onBack={() => navigation.goBack()} />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* HERO CARD */}
-        <SurfaceCard style={styles.heroCard} variant="elevated">
-          <View style={styles.iconCircle}>
-            <AppIcon name="cube" size={36} color={colors.primary} />
-          </View>
-          <Text style={styles.equipmentName}>{item.name}</Text>
-          <View style={styles.badgeRow}>
-            <StatusBadge
-              label={item.inStock === false ? "OUT OF STOCK" : "VERIFIED AVAILABLE"}
-              status={item.inStock === false ? "danger" : "ready"}
-            />
-          </View>
-          <Text style={styles.descText}>
-            {item.description || "Certified personal travel safety equipment inspected for regional safety compliance."}
-          </Text>
-        </SurfaceCard>
-
-        {/* PRICING & QUANTITY */}
-        <SurfaceCard style={styles.priceCard}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>PRICE PER UNIT</Text>
-            {loadingPrice ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text style={styles.priceValue}>₹{pricePerItem.toFixed(2)}</Text>
-            )}
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.rowBetween}>
-            <Text style={styles.metaLabel}>QUANTITY</Text>
-            <View style={styles.qtyControl}>
-              <TouchableOpacity
-                style={styles.qtyBtn}
-                onPress={() => quantity > 1 && setQuantity(quantity - 1)}
-              >
-                <Text style={styles.qtyBtnText}>−</Text>
-              </TouchableOpacity>
-              <Text style={styles.qtyValue}>{quantity}</Text>
-              <TouchableOpacity
-                style={[styles.qtyBtn, styles.qtyBtnAdd]}
-                onPress={() => setQuantity(quantity + 1)}
-              >
-                <Text style={[styles.qtyBtnText, { color: colors.background }]}>+</Text>
-              </TouchableOpacity>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 110 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* HERO CARD */}
+          <SurfaceCard style={styles.heroCard} variant="elevated">
+            <View style={styles.iconCircle}>
+              <AppIcon name="cube" size={36} color={colors.primary} />
             </View>
-          </View>
+            <Text style={styles.equipmentName}>{item.name}</Text>
+            <View style={styles.badgeRow}>
+              <StatusBadge
+                label={outOfStock ? "OUT OF STOCK" : stock !== null ? `${stock} IN STOCK` : "VERIFIED AVAILABLE"}
+                status={outOfStock ? "danger" : "ready"}
+              />
+            </View>
+            <Text style={styles.descText}>
+              {item.description ||
+                "Certified personal travel safety equipment inspected for regional safety compliance."}
+            </Text>
+          </SurfaceCard>
 
-          <View style={styles.divider} />
-
-          <View style={styles.rowBetween}>
-            <Text style={typography.h4}>Total Amount</Text>
-            <Text style={styles.totalPriceValue}>₹{totalPrice.toFixed(2)}</Text>
-          </View>
-        </SurfaceCard>
-
-        {/* DELIVERY DISPATCH LOCATION */}
-        <SurfaceCard style={styles.locationCard}>
-          <View style={styles.locHeaderRow}>
-            <AppIcon name="location-outline" size={18} color={colors.primary} />
-            <Text style={[typography.h4, { marginLeft: 8 }]}>Dispatch Delivery Point</Text>
-          </View>
-
-          <Text style={styles.locSub}>
-            Express tourist safety gear dispatch is routed to your active GPS or chosen manual location.
-          </Text>
-
-          <ActiveLocationBar style={{ marginVertical: 8 }} />
-
-          <TouchableOpacity
-            style={[styles.locBtn, userLocation && styles.locBtnDone]}
-            onPress={getLiveLocation}
-            disabled={gettingLocation}
-          >
-            {gettingLocation ? (
-              <ActivityIndicator size="small" color={colors.background} />
-            ) : (
-              <>
-                <AppIcon
-                  name={userLocation ? "checkmark-circle" : "navigate-outline"}
-                  size={18}
-                  color={userLocation ? colors.background : colors.primary}
-                />
-                <Text style={[styles.locBtnText, userLocation && styles.locBtnTextDone]}>
-                  {userLocation
-                    ? activeLocation
-                      ? `${activeLocation.source === 'MANUAL' ? '✏️ Manual: ' : '📍 GPS: '}${activeLocation.name}`
-                      : `Attached: ${userLocation.latitude.toFixed(4)}, ${userLocation.longitude.toFixed(4)}`
-                    : "Attach Coordinates"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </SurfaceCard>
-
-        {/* LIVE MAP TRACKER */}
-        {showMap && userLocation && (
-          <SurfaceCard style={styles.mapCard}>
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              initialRegion={{
-                latitude: userLocation.latitude,
-                longitude: userLocation.longitude,
-                latitudeDelta: 0.02,
-                longitudeDelta: 0.02,
-              }}
-            >
-              <Marker coordinate={userLocation} title="You" />
-              {deliveryLocation && (
-                <Marker coordinate={deliveryLocation} title="Courier Dispatch" />
+          {/* PRICING & QUANTITY */}
+          <SurfaceCard style={styles.priceCard}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>PRICE PER UNIT</Text>
+              {loadingPrice ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.priceValue}>₹{pricePerItem.toFixed(2)}</Text>
               )}
-            </MapView>
-            <View style={styles.mapNote}>
-              <AppIcon name="time-outline" size={14} color={colors.primary} />
-              <Text style={styles.mapNoteText}>Estimated courier transit: ~35 mins to verified location</Text>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowBetween}>
+              <Text style={styles.metaLabel}>QUANTITY</Text>
+              <View style={styles.qtyControl}>
+                <TouchableOpacity
+                  style={styles.qtyBtn}
+                  onPress={() => quantity > 1 && setQuantity(quantity - 1)}
+                  disabled={quantity <= 1}
+                >
+                  <Text style={styles.qtyBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.qtyValue}>{quantity}</Text>
+                <TouchableOpacity
+                  style={[styles.qtyBtn, styles.qtyBtnAdd, quantity >= maxQty && styles.btnDisabled]}
+                  onPress={() => quantity < maxQty && setQuantity(quantity + 1)}
+                  disabled={quantity >= maxQty}
+                >
+                  <Text style={[styles.qtyBtnText, { color: colors.white }]}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.rowBetween}>
+              <Text style={typography.h4}>Total Amount</Text>
+              <Text style={styles.totalPriceValue}>₹{totalPrice.toFixed(2)}</Text>
             </View>
           </SurfaceCard>
-        )}
 
-        <View style={{ height: 90 }} />
-      </ScrollView>
+          {/* PAYMENT METHOD */}
+          <SurfaceCard style={styles.priceCard}>
+            <Text style={[typography.h4, { marginBottom: 10 }]}>Payment Method</Text>
 
-      {/* PINNED PAY NOW FOOTER */}
-      <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.payOption, paymentMethod === "ONLINE" && styles.payOptionActive]}
+              onPress={() => setPaymentMethod("ONLINE")}
+              activeOpacity={0.8}
+            >
+              <AppIcon name="card-outline" size={20} color={paymentMethod === "ONLINE" ? colors.primary : colors.textSecondary} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.payOptionTitle}>Pay Online</Text>
+                <Text style={styles.payOptionSub}>UPI, cards, net banking via Razorpay</Text>
+              </View>
+              <View style={[styles.radio, paymentMethod === "ONLINE" && styles.radioActive]}>
+                {paymentMethod === "ONLINE" && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.payOption, paymentMethod === "COD" && styles.payOptionActive, { marginTop: 10 }]}
+              onPress={() => {
+                setPaymentMethod("COD");
+                if (quantity > COD_MAX_QUANTITY) setQuantity(COD_MAX_QUANTITY);
+              }}
+              activeOpacity={0.8}
+            >
+              <AppIcon name="cash-outline" size={20} color={paymentMethod === "COD" ? colors.primary : colors.textSecondary} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.payOptionTitle}>Cash on Delivery</Text>
+                <Text style={styles.payOptionSub}>Pay in cash when your gear arrives</Text>
+              </View>
+              <View style={[styles.radio, paymentMethod === "COD" && styles.radioActive]}>
+                {paymentMethod === "COD" && <View style={styles.radioDot} />}
+              </View>
+            </TouchableOpacity>
+
+            {paymentMethod === "COD" && codBlockedReason && (
+              <Text style={styles.codWarning}>{codBlockedReason} Please choose Pay Online.</Text>
+            )}
+          </SurfaceCard>
+
+          {/* DELIVERY DETAILS */}
+          <SurfaceCard style={styles.locationCard}>
+            <View style={styles.locHeaderRow}>
+              <AppIcon name="location-outline" size={18} color={colors.primary} />
+              <Text style={[typography.h4, { marginLeft: 8 }]}>Delivery Details</Text>
+            </View>
+
+            <ActiveLocationBar style={{ marginVertical: 8 }} />
+
+            <Text style={styles.inputLabel}>DELIVERY ADDRESS{paymentMethod === "COD" ? " *" : ""}</Text>
+            <TextInput
+              style={[styles.input, { minHeight: 64, textAlignVertical: "top" }]}
+              value={address}
+              onChangeText={setAddress}
+              placeholder="House / hotel, street, area, city"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={500}
+            />
+
+            <Text style={styles.inputLabel}>CONTACT NUMBER{paymentMethod === "COD" ? " *" : ""}</Text>
+            <TextInput
+              style={styles.input}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="+91 98765 43210"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="phone-pad"
+              maxLength={16}
+            />
+
+            <TouchableOpacity
+              style={[styles.locBtn, { marginTop: 12 }]}
+              onPress={useCurrentLocation}
+              disabled={gettingLocation}
+            >
+              {gettingLocation ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <AppIcon name="navigate-outline" size={18} color={colors.primary} />
+                  <Text style={styles.locBtnText}>Use my precise current location</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </SurfaceCard>
+
+          {/* DELIVERY POINT MAP */}
+          {deliveryPoint && (
+            <SurfaceCard style={styles.mapCard}>
+              <LeafletMap
+                style={styles.map}
+                center={deliveryPoint}
+                zoom={16}
+                markers={[
+                  {
+                    id: "delivery",
+                    latitude: deliveryPoint.latitude,
+                    longitude: deliveryPoint.longitude,
+                    title: "Delivery point",
+                    subtitle: address || undefined,
+                    color: colors.primary,
+                  },
+                ]}
+              />
+              <View style={styles.mapNote}>
+                <AppIcon name="time-outline" size={14} color={colors.primary} />
+                <Text style={styles.mapNoteText}>
+                  Courier delivers to this point. Estimated delivery: same day in city limits.
+                </Text>
+              </View>
+            </SurfaceCard>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* PINNED CHECKOUT FOOTER */}
+      <View style={[styles.footer, { paddingBottom: 14 + insets.bottom }]}>
         <View style={styles.footerPriceCol}>
-          <Text style={styles.footerPriceLabel}>TOTAL PAYABLE</Text>
+          <Text style={styles.footerPriceLabel}>{paymentMethod === "COD" ? "PAY ON DELIVERY" : "TOTAL PAYABLE"}</Text>
           <Text style={styles.footerPriceValue}>₹{totalPrice.toFixed(2)}</Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.checkoutBtn, placingOrder && styles.btnDisabled]}
+          style={[styles.checkoutBtn, (placingOrder || outOfStock) && styles.btnDisabled]}
           onPress={handleOrder}
-          disabled={placingOrder}
+          disabled={placingOrder || outOfStock}
           activeOpacity={0.85}
         >
           {placingOrder ? (
-            <ActivityIndicator color={colors.background} />
+            <ActivityIndicator color={colors.white} />
           ) : (
             <View style={styles.btnRow}>
-              <AppIcon name="card" size={18} color={colors.background} />
-              <Text style={styles.checkoutBtnText}>Pay with Razorpay</Text>
+              <AppIcon name={paymentMethod === "COD" ? "cash" : "card"} size={18} color={colors.white} />
+              <Text style={styles.checkoutBtnText}>
+                {outOfStock ? "Out of Stock" : paymentMethod === "COD" ? "Place Order" : "Pay Now"}
+              </Text>
             </View>
           )}
         </TouchableOpacity>
@@ -331,6 +440,69 @@ export default function EquipmentDetailsScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+  payOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.lightBackground,
+  },
+  payOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accentSubtle,
+  },
+  payOptionTitle: {
+    ...typography.h4,
+    color: colors.textPrimary,
+  },
+  payOptionSub: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioActive: {
+    borderColor: colors.primary,
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  codWarning: {
+    ...typography.caption,
+    color: colors.danger,
+    marginTop: 10,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.button,
+    backgroundColor: colors.lightBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 12,
@@ -353,7 +525,7 @@ const styles = StyleSheet.create({
   },
   equipmentName: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: "center",
     marginBottom: 8,
   },
@@ -383,7 +555,7 @@ const styles = StyleSheet.create({
   },
   priceValue: {
     ...typography.h4,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   totalPriceValue: {
     ...typography.h3,
@@ -418,11 +590,11 @@ const styles = StyleSheet.create({
   qtyBtnText: {
     fontSize: 18,
     fontWeight: "800",
-    color: colors.white,
+    color: colors.textPrimary,
   },
   qtyValue: {
     ...typography.h4,
-    color: colors.white,
+    color: colors.textPrimary,
     paddingHorizontal: 14,
   },
   locationCard: {
@@ -461,7 +633,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   locBtnTextDone: {
-    color: colors.background,
+    color: colors.white,
     fontWeight: "800",
   },
   mapCard: {
@@ -534,6 +706,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.button.fontFamily,
     fontSize: 15,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
 });

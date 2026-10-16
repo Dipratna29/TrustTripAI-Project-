@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   facilityName: {
     ...typography.h2,
     fontSize: 20,
-    color: colors.white,
+    color: colors.textPrimary,
     textAlign: "center",
   },
   categoryText: {
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   },
   bookBtnText: {
     fontFamily: typography.button.fontFamily,
-    color: colors.background,
+    color: colors.white,
     fontSize: 15,
     fontWeight: "800",
   },

@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "../components/common/AppIcon";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../config/api";
 import CosmicBackground from "../components/common/CosmicBackground";
@@ -29,6 +31,12 @@ interface NotificationItem {
     screen?: string;
     deep_link?: string;
     priority?: string;
+    status?: string;
+    incident_id?: string | number;
+    complaint_id?: string | number;
+    order_id?: string | number;
+    guide_id?: string | number;
+    [key: string]: any;
   };
   is_read: boolean;
   expo_response_status?: string;
@@ -46,16 +54,25 @@ const CATEGORIES = [
 
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
+  const [selectedNotif, setSelectedNotif] = useState<NotificationItem | null>(null);
 
   useEffect(() => {
     loadUser();
   }, []);
+
+  // Open modal if notification passed in route params
+  useEffect(() => {
+    if (route.params?.selectedNotification) {
+      setSelectedNotif(route.params.selectedNotification);
+    }
+  }, [route.params?.selectedNotification]);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,19 +175,26 @@ export default function NotificationsScreen() {
 
   const handleNotificationPress = async (notif: NotificationItem) => {
     await handleMarkAsRead(notif);
+    setSelectedNotif(notif);
+  };
 
+  const handleNavigateFromModal = (notif: NotificationItem) => {
+    setSelectedNotif(null);
     const screen = notif.data?.screen;
     if (screen) {
       navigation.navigate(screen);
       return;
     }
 
-    if (notif.notification_type === "emergency" || notif.notification_type === "sos_alert") {
+    const t = notif.notification_type || "";
+    if (t.includes("emergency") || t.includes("sos")) {
       navigation.navigate("SOS");
-    } else if (notif.notification_type === "payment_success") {
+    } else if (t.includes("payment") || t.includes("equipment") || t.includes("order")) {
       navigation.navigate("MyOrders");
-    } else if (notif.notification_type === "complaint_update") {
+    } else if (t.includes("complaint")) {
       navigation.navigate("MyComplaints");
+    } else if (t.includes("guide")) {
+      navigation.navigate("Guide");
     }
   };
 
@@ -190,19 +214,49 @@ export default function NotificationsScreen() {
     return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
   };
 
+  const formatFullDateTime = (dateStr: string) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: true,
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   const getIconForType = (type: string) => {
     switch (type) {
       case "emergency":
       case "sos_alert":
-        return { name: "alert-circle" as const, color: colors.danger, bg: colors.dangerSurface };
+      case "sos_dispatched":
+      case "sos_acknowledged":
+      case "sos_resolved":
+        return { name: "alert-circle" as const, color: colors.danger, bg: colors.dangerSurface, label: "Emergency Alert" };
       case "safety":
-        return { name: "shield-checkmark" as const, color: colors.primary, bg: colors.primaryGlow };
+        return { name: "shield-checkmark" as const, color: colors.primary, bg: colors.primaryGlow, label: "Safety Notice" };
       case "payment_success":
-        return { name: "card" as const, color: colors.primary, bg: colors.primaryGlow };
+      case "equipment_order":
+        return { name: "card" as const, color: colors.primary, bg: colors.primaryGlow, label: "Order & Payment" };
+      case "complaint_submitted":
+      case "complaint_updated":
+      case "complaint":
+        return { name: "document-text" as const, color: "#a78bfa", bg: "rgba(167, 139, 250, 0.15)", label: "Complaint Update" };
+      case "guide_requested":
+      case "guide_cancelled":
+      case "guide_request":
+        return { name: "compass" as const, color: "#38bdf8", bg: "rgba(56, 189, 248, 0.15)", label: "Guide Booking" };
       case "offers":
-        return { name: "pricetag" as const, color: colors.cream, bg: "rgba(251, 226, 180, 0.15)" };
+      case "offer":
+        return { name: "pricetag" as const, color: colors.cream, bg: "rgba(251, 226, 180, 0.15)", label: "Special Offer" };
       default:
-        return { name: "notifications" as const, color: colors.primary, bg: colors.primaryGlow };
+        return { name: "notifications" as const, color: colors.primary, bg: colors.primaryGlow, label: "Notification" };
     }
   };
 
@@ -322,6 +376,131 @@ export default function NotificationsScreen() {
           />
         )}
       </View>
+
+      {/* FULL NOTIFICATION DETAIL MODAL */}
+      <Modal
+        visible={!!selectedNotif}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedNotif(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedNotif(null)}
+        >
+          <TouchableOpacity
+            style={styles.modalCard}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedNotif && (() => {
+              const iconCfg = getIconForType(selectedNotif.notification_type);
+              const dataObj = selectedNotif.data || {};
+              const hasScreenAction = Boolean(
+                dataObj.screen ||
+                selectedNotif.notification_type.includes("sos") ||
+                selectedNotif.notification_type.includes("emergency") ||
+                selectedNotif.notification_type.includes("complaint") ||
+                selectedNotif.notification_type.includes("order") ||
+                selectedNotif.notification_type.includes("payment") ||
+                selectedNotif.notification_type.includes("guide")
+              );
+
+              return (
+                <>
+                  {/* MODAL HEADER */}
+                  <View style={styles.modalHeader}>
+                    <View style={styles.modalBadgeRow}>
+                      <View style={[styles.modalIconWrap, { backgroundColor: iconCfg.bg }]}>
+                        <Ionicons name={iconCfg.name} size={18} color={iconCfg.color} />
+                      </View>
+                      <View style={styles.modalTypePill}>
+                        <Text style={[styles.modalTypePillText, { color: iconCfg.color }]}>
+                          {iconCfg.label}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedNotif(null)}
+                      style={styles.modalCloseBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons name="close" size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* TITLE & TIME */}
+                  <Text style={styles.modalTitleText}>{selectedNotif.title}</Text>
+                  <View style={styles.modalMetaRow}>
+                    <Ionicons name="time-outline" size={13} color={colors.textMuted} />
+                    <Text style={styles.modalTimeText}>
+                      {formatFullDateTime(selectedNotif.created_at)}
+                    </Text>
+                    {dataObj.status && (
+                      <View style={styles.modalStatusChip}>
+                        <Text style={styles.modalStatusText}>{String(dataObj.status).toUpperCase()}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.modalDivider} />
+
+                  {/* FULL BODY SCROLL */}
+                  <ScrollView style={styles.modalBodyScroll} showsVerticalScrollIndicator={false}>
+                    <Text style={styles.modalBodyText} selectable>
+                      {selectedNotif.body}
+                    </Text>
+
+                    {/* EXTRA DETAILS CHIPS */}
+                    {(dataObj.incident_id || dataObj.complaint_id || dataObj.order_id || dataObj.guide_id) && (
+                      <View style={styles.refInfoBox}>
+                        <Ionicons name="information-circle-outline" size={15} color={colors.primary} />
+                        <Text style={styles.refInfoText}>
+                          {dataObj.incident_id ? `SOS Incident Reference: #${dataObj.incident_id}  ` : ""}
+                          {dataObj.complaint_id ? `Complaint Reference: #${dataObj.complaint_id}  ` : ""}
+                          {dataObj.order_id ? `Order Reference: #${dataObj.order_id}  ` : ""}
+                          {dataObj.guide_id ? `Guide Reference: #${dataObj.guide_id}` : ""}
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+
+                  {/* MODAL ACTIONS */}
+                  <View style={styles.modalActionRow}>
+                    {hasScreenAction && (
+                      <TouchableOpacity
+                        style={styles.modalPrimaryActionBtn}
+                        onPress={() => handleNavigateFromModal(selectedNotif)}
+                      >
+                        <Text style={styles.modalPrimaryActionText}>
+                          {selectedNotif.notification_type.includes("sos") || selectedNotif.notification_type.includes("emergency")
+                            ? "Open SOS Center"
+                            : selectedNotif.notification_type.includes("complaint")
+                            ? "View Complaint"
+                            : selectedNotif.notification_type.includes("order") || selectedNotif.notification_type.includes("payment")
+                            ? "View Order"
+                            : selectedNotif.notification_type.includes("guide")
+                            ? "View Guide"
+                            : "Open Related Screen"}
+                        </Text>
+                        <Ionicons name="arrow-forward" size={16} color={colors.white} />
+                      </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.modalDismissBtn}
+                      onPress={() => setSelectedNotif(null)}
+                    >
+                      <Text style={styles.modalDismissText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </CosmicBackground>
   );
 }
@@ -365,7 +544,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   categoryChipTextSelected: {
-    color: colors.background,
+    color: colors.white,
     fontWeight: "800",
   },
   container: {
@@ -415,7 +594,7 @@ const styles = StyleSheet.create({
   },
   unreadTitle: {
     fontWeight: "800",
-    color: colors.white,
+    color: colors.textPrimary,
   },
   timeText: {
     fontSize: 10,
@@ -432,5 +611,151 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.primary,
     marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.screenPadding,
+  },
+  modalCard: {
+    width: "100%",
+    maxHeight: "82%",
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  modalBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  modalIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTypePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  modalTypePillText: {
+    ...typography.caption,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  modalCloseBtn: {
+    padding: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+  },
+  modalTitleText: {
+    ...typography.h3,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  modalMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  modalTimeText: {
+    ...typography.caption,
+    color: colors.textMuted,
+  },
+  modalStatusChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primaryGlow,
+    marginLeft: 6,
+  },
+  modalStatusText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginBottom: 14,
+  },
+  modalBodyScroll: {
+    maxHeight: 260,
+    marginBottom: 18,
+  },
+  modalBodyText: {
+    ...typography.body,
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.textPrimary,
+  },
+  refInfoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    padding: 10,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  refInfoText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  modalActionRow: {
+    flexDirection: "column",
+    gap: 10,
+  },
+  modalPrimaryActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  modalPrimaryActionText: {
+    ...typography.button,
+    color: colors.white,
+    fontWeight: "800",
+  },
+  modalDismissBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalDismissText: {
+    ...typography.button,
+    color: colors.textSecondary,
+    fontSize: 13,
   },
 });

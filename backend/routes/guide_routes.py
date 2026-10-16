@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
+from services.auth_tokens import require_user
 from services.guide_service import (
     fetch_guides,
     submit_guide_rating,
@@ -23,20 +24,31 @@ def get_guides():
 
 
 @guide_bp.route("/rate-guide", methods=["POST"])
+@require_user
 def rate_guide():
-    data = request.get_json(silent=True)
-    if not data or "guide_id" not in data or "username" not in data or "rating" not in data:
-        return jsonify({"error": "Missing required fields: guide_id, username, rating"}), 400
+    data = request.get_json(silent=True) or {}
+    data["username"] = g.username  # ratings are always attributed to the signed-in user
+    if "guide_id" not in data or "rating" not in data:
+        return jsonify({"error": "Missing required fields: guide_id, rating"}), 400
+    try:
+        rating = float(data["rating"])
+    except (TypeError, ValueError):
+        return jsonify({"error": "Rating must be a number"}), 400
+    if not 1 <= rating <= 5:
+        return jsonify({"error": "Rating must be between 1 and 5"}), 400
+    data["rating"] = rating
 
     submit_guide_rating(data)
     return jsonify({"message": "Rating submitted"})
 
 
 @guide_bp.route("/select-guide", methods=["POST"])
+@require_user
 def select_guide():
-    data = request.get_json(silent=True)
-    if not data or "username" not in data or "guide_id" not in data:
-        return jsonify({"error": "Missing username or guide_id"}), 400
+    data = request.get_json(silent=True) or {}
+    data["username"] = g.username
+    if "guide_id" not in data:
+        return jsonify({"error": "Missing guide_id"}), 400
 
     try:
         # Create booking and get ID
@@ -74,17 +86,40 @@ def select_guide():
 
 
 @guide_bp.route("/cancel-booking", methods=["POST"])
+@require_user
 def cancel_booking():
     """
     Cancel a user's active booking for a guide.
     Body: { "username": "...", "guide_id": 123 }
     """
-    data = request.get_json(silent=True)
-    if not data or "username" not in data or "guide_id" not in data:
-        return jsonify({"error": "Missing username or guide_id"}), 400
+    data = request.get_json(silent=True) or {}
+    data["username"] = g.username
+    if "guide_id" not in data:
+        return jsonify({"error": "Missing guide_id"}), 400
 
     try:
         cancel_guide_booking(data)
+
+        # Trigger notification to user
+        username = data.get("username")
+        guide_id = data.get("guide_id")
+        if username:
+            user_id = get_user_id_by_username(username)
+            if user_id:
+                send_notification_to_user(
+                    user_id=user_id,
+                    notification_type="guide_cancelled",
+                    notification_data={
+                        "title": "🧭 Guide Booking Cancelled",
+                        "body": f"Your booking for Guide #{guide_id} has been cancelled successfully.",
+                        "data": {
+                            "type": "guide_request",
+                            "guide_id": guide_id,
+                            "screen": "Guide"
+                        }
+                    }
+                )
+
         return jsonify({"success": True, "message": "Booking cancelled successfully"})
     except ValueError as e:
         return jsonify({"error": str(e)}), 404

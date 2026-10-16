@@ -13,6 +13,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import api from "../../config/api";
+import { triggerLocalNotification } from "../../services/pushNotificationService";
 import CosmicBackground from "../../components/common/CosmicBackground";
 import SurfaceCard from "../../components/common/SurfaceCard";
 import ScreenHeader from "../../components/common/ScreenHeader";
@@ -89,6 +90,12 @@ export default function ComplaintScreen() {
       });
 
       if (response.status >= 200 && response.status < 300) {
+        triggerLocalNotification(
+          "📋 Complaint Submitted to Authorities",
+          `Your report regarding "${selectedCategory}" has been received and assigned for review.`,
+          { type: "complaint_submitted", screen: "MyComplaints" }
+        );
+
         Alert.alert("Report Filed", "Your complaint has been submitted successfully to local authorities.", [
           { text: "View Reports", onPress: () => navigation.navigate("MyComplaints") },
         ]);
@@ -236,7 +243,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 90,
   },
   sectionTitle: {
     fontSize: 10,
@@ -270,7 +277,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   categoryTextSelected: {
-    color: colors.background,
+    color: colors.white,
     fontWeight: "800",
   },
   tipCard: {
@@ -321,7 +328,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   locationBtnTextAttached: {
-    color: colors.background,
+    color: colors.white,
   },
   submitBtn: {
     backgroundColor: colors.primary,
@@ -338,6 +345,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.button.fontFamily,
     fontSize: 16,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
 });

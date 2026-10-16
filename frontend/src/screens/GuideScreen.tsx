@@ -13,6 +13,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import api from "../config/api";
+import { triggerLocalNotification } from "../services/pushNotificationService";
 import CosmicBackground from "../components/common/CosmicBackground";
 import SurfaceCard from "../components/common/SurfaceCard";
 import ScreenHeader from "../components/common/ScreenHeader";
@@ -110,6 +111,11 @@ export default function GuideScreen() {
       await api.post("/select-guide", { guide_id: guideId, username });
       setBookedGuideIds((prev) => new Set(prev).add(guideId));
       await fetchGuides();
+      triggerLocalNotification(
+        "🧭 Guide Reserved Successfully",
+        "Your certified local guide has been reserved and contact details shared.",
+        { type: "guide_requested", screen: "Guide", guide_id: guideId }
+      );
       Alert.alert("Guide Booked ✅", "Your certified local guide has been reserved.");
     } catch {
       Alert.alert("Booking Error", "Could not complete guide booking. Please try again.");
@@ -127,6 +133,11 @@ export default function GuideScreen() {
         return copy;
       });
       await fetchGuides();
+      triggerLocalNotification(
+        "ℹ️ Guide Reservation Cancelled",
+        "Your booking with the certified local guide has been cancelled.",
+        { type: "guide_cancelled", screen: "Guide", guide_id: guideId }
+      );
       Alert.alert("Booking Cancelled", "Your guide reservation has been cancelled.");
     } catch {
       Alert.alert("Error", "Could not cancel booking. Please try again.");
@@ -255,7 +266,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 90,
   },
   searchContainer: {
     flexDirection: "row",
@@ -286,8 +297,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   guideCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
     padding: 16,
     marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   guideTopRow: {
     flexDirection: "row",
@@ -297,9 +315,9 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor: colors.primaryGlow,
+    backgroundColor: "rgba(0, 194, 146, 0.12)",
     borderWidth: 1.5,
-    borderColor: colors.primaryBorder,
+    borderColor: "rgba(0, 194, 146, 0.25)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -307,9 +325,9 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 18,
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: "#F8FAFC",
     borderWidth: 1.5,
-    borderColor: colors.primaryBorder,
+    borderColor: "#E2E8F0",
   },
   nameRow: {
     flexDirection: "row",
@@ -324,12 +342,12 @@ const styles = StyleSheet.create({
   },
   ratingText: {
     ...typography.caption,
-    color: colors.cream,
+    color: "#F59E0B",
     fontWeight: "800",
   },
   ratingCount: {
     ...typography.caption,
-    color: colors.textMuted,
+    color: "#64748B",
   },
   langRow: {
     flexDirection: "row",
@@ -339,7 +357,7 @@ const styles = StyleSheet.create({
   },
   langText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: "#64748B",
     fontSize: 11,
   },
   cardFooter: {
@@ -349,10 +367,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: "#F1F5F9",
   },
   bookBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#00C292",
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderRadius: radius.pill,
@@ -360,7 +378,7 @@ const styles = StyleSheet.create({
   bookBtnText: {
     fontSize: 13,
     fontWeight: "800",
-    color: colors.background,
+    color: colors.white,
   },
   cancelBtn: {
     borderWidth: 1,
@@ -384,7 +402,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     ...typography.h3,
-    color: colors.white,
+    color: colors.textPrimary,
     marginTop: 8,
   },
   emptyDesc: {

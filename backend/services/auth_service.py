@@ -241,11 +241,13 @@ def login_user(data: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional
         logger.warning("User %s attempted login but account status is %s", username, status)
         return None, f"Your account has been {status.lower()} by the administrator. Please contact support@trusttrip.com"
 
-    # Update last_login_at timestamp
+    # Update last_login_at timestamp; upgrade any legacy plaintext password to a hash
     try:
-        supabase.table("users").update({
-            "last_login_at": datetime.now(timezone.utc).isoformat()
-        }).eq("user_id", user.get("user_id")).execute()
+        login_update = {"last_login_at": datetime.now(timezone.utc).isoformat()}
+        stored = str(user.get("password") or "")
+        if stored and not (stored.startswith("pbkdf2:sha256") or stored.startswith("scrypt")):
+            login_update["password"] = generate_password_hash(password)
+        supabase.table("users").update(login_update).eq("user_id", user.get("user_id")).execute()
     except Exception:
         pass
 

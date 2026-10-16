@@ -178,7 +178,7 @@ export default function ChatBotScreen() {
             disabled={!message.trim()}
             activeOpacity={0.8}
           >
-            <AppIcon name="send" size={16} color={colors.background} />
+            <AppIcon name="send" size={16} color={colors.white} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -242,29 +242,32 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
   },
   userBubble: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: "#00C292",
     borderBottomRightRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   botBubble: {
-    backgroundColor: colors.surface,
+    backgroundColor: "#FFFFFF",
     borderBottomLeftRadius: 4,
     borderWidth: 1,
-    borderColor: colors.primaryBorder,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   bubbleText: {
     ...typography.body,
     fontSize: 14,
-    color: colors.textPrimary,
+    color: "#0F172A",
     lineHeight: 20,
   },
   userBubbleText: {
-    color: colors.white,
+    color: "#FFFFFF",
   },
   timeText: {
     fontSize: 10,
-    color: colors.textMuted,
+    color: "#94A3B8",
     marginTop: 4,
     textAlign: "right",
   },
@@ -314,7 +317,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.lightBackground,
     borderRadius: radius.pill,
     paddingHorizontal: 16,
     paddingVertical: 10,

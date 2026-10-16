@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 6,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   description: {
     ...typography.bodySm,
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   compactTitle: {
     ...typography.label,
     fontSize: 14,
-    color: colors.white,
+    color: colors.textPrimary,
   },
   compactDesc: {
     ...typography.caption,

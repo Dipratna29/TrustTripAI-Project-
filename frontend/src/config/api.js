@@ -1,21 +1,21 @@
 import axios from "axios";
-import { Platform } from "react-native";
 import { API_BASE_URL, REQUEST_TIMEOUT } from "./constants";
 import AxiosErrorLogger from "../utils/axiosErrorLogger";
+import { getAuthToken, notifyUnauthorized } from "../services/authToken";
 
 // initialize logger (loads persisted logs)
 AxiosErrorLogger.initAxiosErrorLogger().catch(() => {});
 
 // Resolve a development-friendly base URL for the current platform.
+// Production builds always use the configured HTTPS URL untouched.
 let resolvedBase = API_BASE_URL;
-try {
+if (__DEV__) {
   if (!API_BASE_URL || API_BASE_URL.includes("your-backend-domain.com")) {
-    resolvedBase = Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
-  } else if (API_BASE_URL.includes("localhost") && Platform.OS === "android") {
-    resolvedBase = API_BASE_URL.replace("localhost", "10.0.2.2");
+    resolvedBase = "http://127.0.0.1:5000";
+  } else if (API_BASE_URL.includes("localhost")) {
+    resolvedBase = API_BASE_URL.replace("localhost", "127.0.0.1");
   }
-} catch (e) {
-  resolvedBase = API_BASE_URL;
+  console.log("[TrustTrip] Active API Base URL:", resolvedBase);
 }
 
 const api = axios.create({
@@ -26,12 +26,24 @@ const api = axios.create({
   },
 });
 
+// Attach the signed session token to every request
+api.interceptors.request.use(async (config) => {
+  const token = await getAuthToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     try {
       if (error.response) {
-        console.log("[v0] API request failed:", error.response.status);
+        if (error.response.status === 401 && error.response.data?.error === "unauthorized") {
+          notifyUnauthorized();
+        }
         AxiosErrorLogger.logError({
           type: 'response',
           status: error.response.status,
@@ -40,14 +52,11 @@ api.interceptors.response.use(
             method: error.config?.method,
             url: error.config?.url,
             params: error.config?.params,
-            data: error.config?.data,
           },
         });
       } else if (error.request) {
-        console.log("NETWORK ERROR:", error.message);
-        AxiosErrorLogger.logError({ type: 'network', message: error.message, config: error.config });
+        AxiosErrorLogger.logError({ type: 'network', message: error.message, config: { url: error.config?.url, method: error.config?.method } });
       } else {
-        console.log("REQUEST ERROR:", error.message);
         AxiosErrorLogger.logError({ type: 'request', message: error.message });
       }
     } catch (e) {

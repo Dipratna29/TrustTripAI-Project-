@@ -19,6 +19,21 @@ NOTIFICATION_TEMPLATES = {
         "body": "Your TrustTrip account has been created successfully. Stay safe and travel with confidence.",
         "data": {"type": "welcome", "screen": "Home"}
     },
+    "sos_dispatched": {
+        "title": "🚨 SOS Emergency Dispatched",
+        "body": "Your SOS emergency distress signal has been sent to TrustTrip Administration and emergency response services.",
+        "data": {"type": "emergency", "screen": "SOS", "priority": "high"}
+    },
+    "sos_acknowledged": {
+        "title": "🚨 SOS Acknowledged by Admin",
+        "body": "Administration has acknowledged your emergency. Responders have been alerted.",
+        "data": {"type": "emergency", "screen": "SOS", "priority": "high"}
+    },
+    "sos_resolved": {
+        "title": "✅ SOS Emergency Resolved",
+        "body": "Your emergency incident has been marked as resolved by Administration. Stay safe!",
+        "data": {"type": "emergency", "screen": "SOS"}
+    },
     "equipment_order": {
         "title": "🛡️ Order Confirmed",
         "body": "Your safety equipment order has been successfully placed.",
@@ -29,10 +44,25 @@ NOTIFICATION_TEMPLATES = {
         "body": "Your complaint has been submitted successfully. We will keep you updated.",
         "data": {"type": "complaint", "screen": "MyComplaints"}
     },
+    "complaint_updated": {
+        "title": "📋 Complaint Updated",
+        "body": "Administration has reviewed and updated your complaint with an official response.",
+        "data": {"type": "complaint", "screen": "MyComplaints"}
+    },
     "guide_requested": {
         "title": "🧭 Guide Request Sent",
         "body": "Your local guide request has been submitted successfully.",
         "data": {"type": "guide_request", "screen": "Guide"}
+    },
+    "guide_cancelled": {
+        "title": "🧭 Guide Booking Cancelled",
+        "body": "Your guide booking has been cancelled.",
+        "data": {"type": "guide_request", "screen": "Guide"}
+    },
+    "account_status_changed": {
+        "title": "👤 Account Status Notice",
+        "body": "Your TrustTrip account status has been updated by administration.",
+        "data": {"type": "system", "screen": "Profile"}
     },
 }
 
@@ -162,9 +192,11 @@ def send_notification_to_user(user_id, notification_type, notification_data=None
     """
     if notification_type in NOTIFICATION_TEMPLATES:
         template = NOTIFICATION_TEMPLATES[notification_type]
-        title = template.get("title", "")
-        body = template.get("body", "")
+        title = (notification_data and notification_data.get("title")) or template.get("title", "")
+        body = (notification_data and notification_data.get("body")) or template.get("body", "")
         data = dict(template.get("data", {}))
+        if notification_data and "data" in notification_data and isinstance(notification_data["data"], dict):
+            data.update(notification_data["data"])
     else:
         if not notification_data:
             return False, f"Unknown notification type '{notification_type}' and no data provided"
@@ -368,6 +400,22 @@ def mark_all_notifications_as_read(user_id: int) -> int:
     except Exception as e:
         logger.error("Error marking all notifications as read for user %s: %s", user_id, e)
         return 0
+
+
+def delete_notification(notification_id: int, user_id: int = None) -> bool:
+    """
+    Delete a notification by ID.
+    """
+    supabase = get_supabase()
+    try:
+        query = supabase.table("notifications").delete().eq("notification_id", int(notification_id))
+        if user_id is not None:
+            query = query.eq("user_id", int(user_id))
+        res = query.execute()
+        return bool(res.data)
+    except Exception as e:
+        logger.error("Error deleting notification %s: %s", notification_id, e)
+        return False
 
 
 def register_device(user_id, push_token, device_type="android", device_name=None):

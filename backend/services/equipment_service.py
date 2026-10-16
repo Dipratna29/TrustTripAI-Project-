@@ -6,7 +6,6 @@ as the single source of truth.
 """
 
 import logging
-import secrets
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from database import get_supabase
@@ -34,7 +33,7 @@ def fetch_all_equipment(search: Optional[str] = None, category: Optional[str] = 
             query = query.eq("category", category)
 
         if search and search.strip():
-            s = search.strip()
+            s = "".join(ch for ch in search.strip() if ch.isalnum() or ch in " -_")[:60]
             query = query.or_(f"name.ilike.%{s}%,category.ilike.%{s}%,sku.ilike.%{s}%,description.ilike.%{s}%")
 
         res = query.order("id").execute()
@@ -79,63 +78,90 @@ def fetch_equipment_by_id(equipment_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 
-def create_order(data: Dict[str, Any]) -> Dict[str, Any]:
+COD_MAX_QUANTITY = 10
+COD_MAX_ORDER_VALUE = 10000.0  # INR; larger orders must be prepaid
+
+
+def _stock_status(stock: int, min_stock: int) -> str:
+    if stock <= 0:
+        return "OUT_OF_STOCK"
+    if stock <= min_stock:
+        return "LOW_STOCK"
+    return "IN_STOCK"
+
+
+def create_order(data: Dict[str, Any], payment_method: str = "COD") -> Dict[str, Any]:
     """
-    Create equipment order with atomic server-side stock verification and deduction.
-    Records inventory transaction ('ORDER_DEDUCT') and inserts into equipment_orders.
-    
-    Args:
-        data: Dictionary with user_id, equipment_id, quantity, total_price, latitude, longitude
-        
-    Returns:
-        dict: The order details including order_id and remaining_stock
+    Create a Cash-on-Delivery equipment order.
+    Price is always computed server-side from inventory_items (client totals are ignored),
+    and stock is deducted with an optimistic-concurrency guard so two buyers cannot
+    oversell the last units. Prepaid orders go through payment_service instead.
     """
     supabase = get_supabase()
     user_id = int(data["user_id"])
     equipment_id = int(data["equipment_id"])
-    quantity = int(data.get("quantity", 1))
+    try:
+        quantity = int(data.get("quantity", 1))
+    except (TypeError, ValueError):
+        raise ValueError("Invalid quantity")
     if quantity <= 0:
         raise ValueError("Order quantity must be at least 1")
+    if quantity > COD_MAX_QUANTITY:
+        raise ValueError(f"Cash on Delivery is limited to {COD_MAX_QUANTITY} units per order")
 
-    # 1. Fetch live stock from inventory_items
-    inv_res = supabase.table("inventory_items").select("*").eq("id", equipment_id).limit(1).execute()
-    if not inv_res.data:
-        # Fallback query for legacy equipment id if needed
-        inv_res = supabase.table("inventory_items").select("*").or_(
-            f"id.eq.{equipment_id},sku.ilike.EQ-00{equipment_id}%,name.ilike.%{data.get('name', '')}%"
-        ).limit(1).execute()
+    lat, lon = data.get("latitude"), data.get("longitude")
+    try:
+        lat = float(lat) if lat is not None else None
+        lon = float(lon) if lon is not None else None
+    except (TypeError, ValueError):
+        raise ValueError("Invalid delivery coordinates")
+    if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("A valid delivery location is required")
 
-    if not inv_res.data:
-        raise ValueError(f"Equipment item #{equipment_id} not found in inventory")
+    delivery_address = str(data.get("delivery_address") or "").strip()[:500]
+    contact_phone = str(data.get("contact_phone") or "").strip()[:30]
 
-    inv_item = inv_res.data[0]
-    item_id = inv_item["id"]
-    item_name = inv_item.get("name", "Safety Gear")
-    current_stock = int(inv_item.get("current_stock", 0))
-    min_stock = int(inv_item.get("minimum_stock", 5))
+    for _attempt in range(3):
+        inv_res = supabase.table("inventory_items").select("*").eq("id", equipment_id).limit(1).execute()
+        if not inv_res.data:
+            raise ValueError(f"Equipment item #{equipment_id} not found in inventory")
 
-    # Strict server-side stock check
-    if current_stock < quantity:
-        raise ValueError(f"Insufficient stock: Requested {quantity} unit(s), but only {current_stock} available.")
+        inv_item = inv_res.data[0]
+        if str(inv_item.get("status") or "").upper() == "INACTIVE":
+            raise ValueError("This equipment item is currently unavailable")
 
-    unit_price = float(inv_item.get("price", 0.0))
-    total_price = float(data.get("total_price", 0)) or (unit_price * quantity)
+        item_id = inv_item["id"]
+        item_name = inv_item.get("name", "Safety Gear")
+        current_stock = int(inv_item.get("current_stock") or 0)
+        min_stock = int(inv_item.get("minimum_stock") or 5)
 
-    new_stock = current_stock - quantity
-    new_status = "IN_STOCK"
-    if new_stock == 0:
-        new_status = "OUT_OF_STOCK"
-    elif new_stock <= min_stock:
-        new_status = "LOW_STOCK"
+        if current_stock < quantity:
+            raise ValueError(f"Insufficient stock: Requested {quantity} unit(s), but only {current_stock} available.")
 
-    # 2. Deduct stock in inventory_items
-    supabase.table("inventory_items").update({
-        "current_stock": new_stock,
-        "status": new_status,
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }).eq("id", item_id).execute()
+        unit_price = float(inv_item.get("price") or 0.0)
+        if unit_price <= 0:
+            raise ValueError("This item has no valid price configured")
+        total_price = round(unit_price * quantity, 2)
+        if total_price > COD_MAX_ORDER_VALUE:
+            raise ValueError(f"Cash on Delivery is available for orders up to INR {COD_MAX_ORDER_VALUE:,.0f}. Please pay online.")
 
-    # 3. Record inventory transaction
+        new_stock = current_stock - quantity
+        upd = (
+            supabase.table("inventory_items")
+            .update({
+                "current_stock": new_stock,
+                "status": _stock_status(new_stock, min_stock),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", item_id)
+            .eq("current_stock", current_stock)
+            .execute()
+        )
+        if upd.data:
+            break
+    else:
+        raise ValueError("This item is in high demand right now. Please try again.")
+
     try:
         supabase.table("inventory_transactions").insert({
             "item_id": item_id,
@@ -143,61 +169,61 @@ def create_order(data: Dict[str, Any]) -> Dict[str, Any]:
             "quantity": quantity,
             "previous_stock": current_stock,
             "new_stock": new_stock,
-            "reason": f"Mobile Order by User #{user_id}",
+            "reason": f"Mobile {payment_method} Order by User #{user_id}",
             "notes": f"Order for {quantity}x {item_name} (Total: INR {total_price})",
             "created_at": datetime.now(timezone.utc).isoformat()
         }).execute()
     except Exception as tx_err:
         logger.warning("Could not record inventory transaction: %s", tx_err)
 
-    # 4. Insert into equipment_orders table
-    payload = {
+    base_payload = {
         "user_id": user_id,
         "equipment_id": item_id,
         "quantity": quantity,
         "total_price": total_price,
-        "latitude": data.get("latitude"),
-        "longitude": data.get("longitude"),
-        "status": "Confirmed"
+        "latitude": lat,
+        "longitude": lon,
+        "status": "Confirmed",
+    }
+    extended_payload = {
+        **base_payload,
+        "payment_method": payment_method,
+        "payment_status": "COD_PENDING" if payment_method == "COD" else "PENDING",
+        "delivery_address": delivery_address or None,
+        "contact_phone": contact_phone or None,
     }
 
-    res = supabase.table("equipment_orders").insert(payload).execute()
+    try:
+        res = supabase.table("equipment_orders").insert(extended_payload).execute()
+    except Exception as ext_err:
+        # Columns from migration 003 missing: keep the order but flag it in the status text
+        logger.warning("Extended order insert failed (%s); run migration 003. Falling back.", ext_err)
+        res = supabase.table("equipment_orders").insert({**base_payload, "status": "Confirmed (COD)"}).execute()
+
     if not res.data:
+        # Roll back the stock deduction so inventory stays consistent
+        try:
+            supabase.table("inventory_items").update({
+                "current_stock": current_stock,
+                "status": _stock_status(current_stock, min_stock),
+            }).eq("id", item_id).execute()
+        except Exception:
+            logger.error("Stock rollback failed for item #%s", item_id)
         raise RuntimeError("Failed to insert equipment order into database")
 
     order_record = res.data[0]
-
-    # 5. Mirror to razorpay_payments ledger so admin payment audit displays this transaction
-    try:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        direct_order_ref = data.get("razorpay_order_id") or f"order_direct_{order_record['id']}_{secrets.token_hex(4)}"
-        direct_pay_ref = data.get("razorpay_payment_id") or f"pay_direct_{order_record['id']}_{secrets.token_hex(4)}"
-        supabase.table("razorpay_payments").insert({
-            "razorpay_order_id": direct_order_ref,
-            "razorpay_payment_id": direct_pay_ref,
-            "user_id": user_id,
-            "equipment_id": item_id,
-            "quantity": quantity,
-            "amount_paise": int(round(total_price * 100)),
-            "currency": "INR",
-            "status": "PAID",
-            "receipt": f"tt_eo_{order_record['id']}",
-            "paid_at": now_iso,
-            "created_at": order_record.get("created_at") or now_iso,
-            "updated_at": now_iso
-        }).execute()
-        logger.info("[PAYMENT] Successfully mirrored equipment order #%s to razorpay_payments ledger", order_record["id"])
-    except Exception as pay_err:
-        logger.warning("[PAYMENT] Could not mirror order to razorpay_payments: %s", pay_err)
-
     return {
         "order_id": order_record["id"],
         "equipment_id": item_id,
         "name": item_name,
         "quantity": quantity,
+        "unit_price": unit_price,
         "total_price": total_price,
         "remaining_stock": new_stock,
-        "status": order_record.get("status", "Confirmed")
+        "payment_method": payment_method,
+        "payment_status": order_record.get("payment_status", "COD_PENDING"),
+        "status": order_record.get("status", "Confirmed"),
+        "created_at": order_record.get("created_at"),
     }
 
 
@@ -205,22 +231,25 @@ def fetch_user_orders(user_id: int) -> List[Dict[str, Any]]:
     """Fetch all equipment orders for a specific user with joined item metadata."""
     supabase = get_supabase()
 
-    try:
-        orders_res = (
-            supabase.table("equipment_orders")
-            .select("id, quantity, total_price, status, created_at, equipment_id, razorpay_order_id, razorpay_payment_id, payment_status")
-            .eq("user_id", int(user_id))
-            .order("created_at", desc=True)
-            .execute()
-        )
-    except Exception:
-        orders_res = (
-            supabase.table("equipment_orders")
-            .select("id, quantity, total_price, status, created_at, equipment_id")
-            .eq("user_id", int(user_id))
-            .order("created_at", desc=True)
-            .execute()
-        )
+    column_sets = [
+        "id, quantity, total_price, status, created_at, equipment_id, razorpay_order_id, razorpay_payment_id, payment_status, payment_method, delivery_address",
+        "id, quantity, total_price, status, created_at, equipment_id, razorpay_order_id, razorpay_payment_id, payment_status",
+        "id, quantity, total_price, status, created_at, equipment_id",
+    ]
+    orders_res = None
+    for idx, columns in enumerate(column_sets):
+        try:
+            orders_res = (
+                supabase.table("equipment_orders")
+                .select(columns)
+                .eq("user_id", int(user_id))
+                .order("created_at", desc=True)
+                .execute()
+            )
+            break
+        except Exception:
+            if idx == len(column_sets) - 1:
+                raise
     orders = orders_res.data or []
 
     if orders:

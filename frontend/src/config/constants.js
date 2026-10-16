@@ -4,7 +4,7 @@ const expoExtra = Constants.expoConfig?.extra ?? {};
 const runtimeProcessEnv = typeof process !== "undefined" ? process.env : {};
 
 const getEnvValue = (key, fallback) => {
-  const value = expoExtra[key] ?? runtimeProcessEnv[key] ?? fallback;
+  const value = runtimeProcessEnv[key] ?? expoExtra[key] ?? fallback;
   return value ?? fallback;
 };
 
