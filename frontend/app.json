@@ -38,7 +38,7 @@
       "output": "single"
     },
     "extra": {
-      "API_BASE_URL": "http://127.0.0.1:5000",
+      "API_BASE_URL": "https://trusttrip-api-r5vu.onrender.com",
       "APP_NAME": "TrustTrip",
       "APP_VERSION": "1.0.0",
       "REQUEST_TIMEOUT": 30000

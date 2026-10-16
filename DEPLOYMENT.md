@@ -3,7 +3,7 @@
 | Part | Free host | What you get |
 | --- | --- | --- |
 | Database, auth, photo storage | **Supabase** (Free plan) | Postgres + Storage bucket `avatars` |
-| Flask API (`backend/`) | **Render** (Free web service) | `https://trusttrip-api.onrender.com` |
+| Flask API (`backend/`) | **Render** (Free web service) | `https://trusttrip-api-r5vu.onrender.com` |
 | Admin panel (`admin/`) | **Vercel** or **Netlify** (Hobby/Free) | Static Vite site |
 | Android app (`frontend/`) | **Expo EAS Build** (Free plan) | Installable APK / Play Store AAB |
 
@@ -49,7 +49,7 @@ Tests: `python -m unittest discover -s tests`
 ## 3. Admin panel on Vercel
 
 1. Vercel → **New Project** → root directory `admin`, framework preset **Vite**.
-2. Environment variables: `VITE_BACKEND_URL=https://trusttrip-api.onrender.com`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (the anon key).
+2. Environment variables: `VITE_BACKEND_URL=https://trusttrip-api-r5vu.onrender.com`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (the anon key).
 3. Deploy. `admin/vercel.json` (or `public/_redirects` on Netlify) handles client-side routes.
 4. Add the resulting URL to the API's `CORS_ORIGINS`.
 

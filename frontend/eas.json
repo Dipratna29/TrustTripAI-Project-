@@ -17,7 +17,7 @@
         "buildType": "apk"
       },
       "env": {
-        "API_BASE_URL": "https://trusttrip-api.onrender.com"
+        "API_BASE_URL": "https://trusttrip-api-r5vu.onrender.com"
       }
     },
     "production": {
@@ -25,7 +25,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "API_BASE_URL": "https://trusttrip-api.onrender.com"
+        "API_BASE_URL": "https://trusttrip-api-r5vu.onrender.com"
       }
     }
   },
