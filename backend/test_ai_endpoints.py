@@ -17,6 +17,12 @@ import json
 BASE_URL = "http://127.0.0.1:5000"
 
 
+def setUpModule():
+    # Calls a running server and spends Groq quota
+    from live_test_support import require_live
+    require_live()
+
+
 class TestGroqAIAssistant(unittest.TestCase):
 
     def test_01_status(self):

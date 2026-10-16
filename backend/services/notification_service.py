@@ -6,7 +6,8 @@ Handles Expo push notification delivery and logging using Supabase.
 import requests
 import json
 import logging
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from database import get_supabase
 from config import Config
 
@@ -86,52 +87,123 @@ def _get_active_devices(user_id):
         return []
 
 
+EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
+EXPO_TOKEN_RE = re.compile(r"^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_\-]+\]$")
+# Ticket/receipt errors that mean the token is permanently unusable
+PERMANENT_TOKEN_ERRORS = {"DeviceNotRegistered", "InvalidCredentials"}
+
+
+def is_valid_expo_token(token) -> bool:
+    return bool(token) and bool(EXPO_TOKEN_RE.match(str(token).strip()))
+
+
+def _expo_headers():
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    # Only needed when "enhanced push security" is enabled for the Expo project
+    if Config.EXPO_ACCESS_TOKEN:
+        headers["Authorization"] = f"Bearer {Config.EXPO_ACCESS_TOKEN}"
+    return headers
+
+
+def _alert_push_failure(error_code):
+    try:
+        from services.admin_event_service import record_system_event
+        hour = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+        record_system_event(
+            "integration.push_failed",
+            "Push notifications failing",
+            f"Expo push delivery returned {error_code}. Check FCM credentials in EAS and the Expo project.",
+            dedup_key=f"push_failed:{error_code}:{hour}",
+            severity="WARNING",
+            metadata={"channel": "push", "provider": "expo", "error_code": error_code},
+        )
+    except Exception:
+        logger.debug("Push failure alert not recorded")
+
+
 def _send_to_expo_api(push_token, title, body, data=None):
     """
-    Send a notification to Expo Push Service.
+    Send one message to the Expo Push Service.
+    Returns (accepted, info). Expo answers HTTP 200 even for rejected messages, so the
+    per-message ticket status ("ok"/"error") is what decides success.
     """
-    if not Config.EXPO_ACCESS_TOKEN:
-        logger.warning("EXPO_ACCESS_TOKEN not configured. Notification not sent.")
-        return False, {"error": "EXPO_ACCESS_TOKEN not configured"}
+    if not is_valid_expo_token(push_token):
+        return False, {"error": "InvalidPushToken", "permanent": True}
 
-    expo_url = "https://exp.host/--/api/v2/push/send"
-
-    headers = {
-        "Host": "exp.host",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "to": push_token,
-        "sound": "default",
-        "title": title,
-        "body": body,
-        "priority": "high",
-    }
-
+    payload = {"to": push_token, "sound": "default", "title": title, "body": body,
+               "priority": "high", "channelId": "default"}
     if data:
         payload["data"] = data
 
-    try:
-        response = requests.post(
-            expo_url,
-            headers=headers,
-            json=payload,
-            timeout=10
-        )
-        response_data = response.json()
+    for attempt in range(2):  # one retry for transient network/5xx errors
+        try:
+            response = requests.post(EXPO_PUSH_URL, headers=_expo_headers(), json=payload, timeout=10)
+        except requests.exceptions.RequestException as e:
+            logger.warning("Expo push network error (attempt %s): %s", attempt + 1, type(e).__name__)
+            if attempt == 0:
+                continue
+            return False, {"error": "NetworkError"}
+        if response.status_code >= 500 and attempt == 0:
+            continue
+        try:
+            body_json = response.json()
+        except ValueError:
+            return False, {"error": f"HTTP{response.status_code}"}
+        if response.status_code != 200:
+            err = ((body_json.get("errors") or [{}])[0]).get("code") or f"HTTP{response.status_code}"
+            return False, {"error": err}
+        ticket = body_json.get("data") or {}
+        if isinstance(ticket, list):
+            ticket = ticket[0] if ticket else {}
+        if ticket.get("status") == "ok":
+            return True, {"ticket_id": ticket.get("id"), "status": "queued"}
+        err = (ticket.get("details") or {}).get("error") or "TicketError"
+        return False, {"error": err, "permanent": err in PERMANENT_TOKEN_ERRORS, "message": ticket.get("message")}
+    return False, {"error": "Unknown"}
 
-        if response.status_code == 200 and response_data.get("data"):
-            ticket_id = response_data["data"].get("id")
-            return True, {"ticket_id": ticket_id, "status": "queued"}
-        else:
-            return False, response_data
 
-    except requests.exceptions.RequestException as e:
-        logger.error("Expo API error: %s", e)
-        return False, {"error": str(e)}
+def check_push_receipts(hours: int = 24, limit: int = 300):
+    """
+    Fetch Expo receipts for recently sent tickets: marks DELIVERED/FAILED and deactivates
+    tokens Expo reports as DeviceNotRegistered. Safe to call repeatedly.
+    """
+    supabase = get_supabase()
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        supabase.table("notifications").select("notification_id, device_id, expo_ticket_id")
+        .eq("expo_response_status", "PUSH_SENT").gte("created_at", since).limit(limit).execute()
+    )
+    rows = [r for r in (res.data or []) if r.get("expo_ticket_id")]
+    summary = {"checked": 0, "delivered": 0, "failed": 0, "deactivated": 0}
+    for i in range(0, len(rows), 100):
+        chunk = rows[i:i + 100]
+        try:
+            resp = requests.post(EXPO_RECEIPTS_URL, headers=_expo_headers(),
+                                 json={"ids": [r["expo_ticket_id"] for r in chunk]}, timeout=15)
+            receipts = (resp.json() or {}).get("data") or {}
+        except Exception as exc:
+            logger.warning("Expo receipts fetch failed: %s", type(exc).__name__)
+            continue
+        for row in chunk:
+            receipt = receipts.get(row["expo_ticket_id"])
+            if not receipt:
+                continue  # not ready yet
+            summary["checked"] += 1
+            if receipt.get("status") == "ok":
+                status = "DELIVERED_TO_PROVIDER"
+                summary["delivered"] += 1
+            else:
+                err = (receipt.get("details") or {}).get("error") or "ReceiptError"
+                status = f"FAILED_{err}"[:50]
+                summary["failed"] += 1
+                if err in PERMANENT_TOKEN_ERRORS and row.get("device_id"):
+                    _mark_device_inactive(row["device_id"])
+                    summary["deactivated"] += 1
+                _alert_push_failure(err)
+            supabase.table("notifications").update({"expo_response_status": status}).eq(
+                "notification_id", row["notification_id"]).execute()
+    return summary
 
 
 def _log_notification(user_id, device_id, notification_type, title, body, data, expo_status, expo_ticket_id):
@@ -262,9 +334,9 @@ def send_notification_to_user(user_id, notification_type, notification_data=None
             _update_device_last_used(device_id)
         else:
             failed_count += 1
-            error_str = str(response)
-            if "invalid" in error_str.lower() or "expired" in error_str.lower():
+            if response.get("permanent"):
                 _mark_device_inactive(device_id)
+            _alert_push_failure(response.get("error", "Unknown"))
 
         # Update the created notification row with delivery detail
         if notification_id:
@@ -424,6 +496,8 @@ def register_device(user_id, push_token, device_type="android", device_name=None
     """
     user_id = int(user_id)
     push_token = str(push_token).strip()
+    if not is_valid_expo_token(push_token):
+        return False, "Invalid Expo push token", None
 
     supabase = get_supabase()
     now_iso = datetime.now(timezone.utc).isoformat()

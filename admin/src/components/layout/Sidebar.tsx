@@ -20,8 +20,11 @@ import {
   LogOut,
   ChevronDown,
   X,
-  ShieldAlert
+  ShieldAlert,
+  BellRing,
+  ShoppingBag
 } from 'lucide-react';
+import { useAdminEvents } from '../../context/AdminEventsContext';
 import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
@@ -31,6 +34,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user, logout, hasRole } = useAuth();
+  const { unread, criticalUnread } = useAdminEvents();
   const [inventoryOpen, setInventoryOpen] = React.useState(true);
   const [adminOpen, setAdminOpen] = React.useState(true);
 
@@ -93,6 +97,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <NavLink to="/" end className={navLinkClass} onClick={onClose}>
             <LayoutDashboard className="w-4 h-4" />
             <span>Dashboard</span>
+          </NavLink>
+
+          <NavLink to="/notification-center" className={navLinkClass} onClick={onClose}>
+            <BellRing className="w-4 h-4 text-brand-500" />
+            <span className="flex-1">Notification Center</span>
+            {unread > 0 && (
+              <span
+                className={`min-w-[1.25rem] h-5 px-1.5 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                  criticalUnread > 0 ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white'
+                }`}
+                aria-label={`${unread} unread notifications`}
+              >
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </NavLink>
+
+          <NavLink to="/orders" className={navLinkClass} onClick={onClose}>
+            <ShoppingBag className="w-4 h-4 text-emerald-500" />
+            <span>Orders</span>
           </NavLink>
 
           <NavLink to="/users" className={navLinkClass} onClick={onClose}>

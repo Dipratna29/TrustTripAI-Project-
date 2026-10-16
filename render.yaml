@@ -41,3 +41,15 @@ services:
         sync: false
       - key: EXPO_ACCESS_TOKEN
         sync: false
+      - key: SMS_MODE
+        value: auto
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: OCR_SPACE_API_KEY
+        sync: false

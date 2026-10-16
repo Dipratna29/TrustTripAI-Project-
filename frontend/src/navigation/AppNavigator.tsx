@@ -41,6 +41,7 @@ import DashboardScreen from "../screens/DashboardScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import DebugAxiosErrorsScreen from "../screens/DebugAxiosErrorsScreen";
 import SelectLocationScreen from "../screens/SelectLocationScreen";
+import OffersScreen from "../screens/OffersScreen";
 import { LocationProvider } from "../context/LocationContext";
 import LocationFallbackModal from "../components/common/LocationFallbackModal";
 
@@ -73,6 +74,7 @@ type RootStackParamList = {
   EquipmentDetails: undefined;
   ChatBot: undefined;
   DebugAxiosErrors: undefined;
+  Offers: undefined;
 };
 
 function RootNavigationContent() {
@@ -199,6 +201,7 @@ function RootNavigationContent() {
               <Stack.Screen name="Equipment" component={EquipmentScreen} />
               <Stack.Screen name="EquipmentDetails" component={EquipmentDetailsScreen} />
               <Stack.Screen name="ChatBot" component={ChatBotScreen} />
+              <Stack.Screen name="Offers" component={OffersScreen} />
               <Stack.Screen name="DebugAxiosErrors" component={DebugAxiosErrorsScreen} />
             </>
           ) : (

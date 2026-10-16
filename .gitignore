@@ -21,3 +21,7 @@ web-build/
 # Emulator screenshots
 emulator_screen*.png
 frontend/emulator_screen*.png
+
+# Firebase config (supply via EAS file env var GOOGLE_SERVICES_JSON)
+google-services.json
+frontend/google-services.json

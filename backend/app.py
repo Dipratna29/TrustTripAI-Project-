@@ -21,6 +21,8 @@ from routes.offer_routes import offer_bp
 from routes.chatbot_routes import chatbot_bp
 from routes.ai_routes import ai_bp
 from routes.notification_routes import notification_bp
+from routes.admin_event_routes import admin_events_bp
+from routes.ocr_routes import ocr_bp
 
 from database.supabase_client import check_supabase_connection
 
@@ -56,6 +58,8 @@ app.register_blueprint(offer_bp)
 app.register_blueprint(chatbot_bp)
 app.register_blueprint(ai_bp)
 app.register_blueprint(notification_bp)
+app.register_blueprint(admin_events_bp)
+app.register_blueprint(ocr_bp)
 
 @app.route("/", methods=["GET"])
 def index():

@@ -85,8 +85,10 @@ def register_user(data: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("Username is required")
     if not password:
         raise ValueError("Password is required")
-    if len(password) < 6:
-        raise ValueError("Password must be at least 6 characters")
+    from services.password_reset_service import validate_new_password
+    password_problem = validate_new_password(password, username)
+    if password_problem:
+        raise ValueError(password_problem)
 
     country_code, phone_number, full_phone = normalize_phone(
         data.get("country_code"),

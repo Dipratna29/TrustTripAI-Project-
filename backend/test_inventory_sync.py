@@ -18,6 +18,8 @@ BASE_URL = "http://127.0.0.1:5000"
 class TestInventorySync(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        from live_test_support import require_live
+        require_live("TEST_ADMIN_EMAIL", "TEST_ADMIN_PASSWORD")
         cls.client = get_supabase_client()
         supabase_url = Config.SUPABASE_URL
         supabase_key = Config.SUPABASE_SERVICE_ROLE_KEY or Config.SUPABASE_KEY
@@ -26,7 +28,7 @@ class TestInventorySync(unittest.TestCase):
         auth_url = f"{supabase_url}/auth/v1/token?grant_type=password"
         auth_res = requests.post(
             auth_url,
-            json={"email": "test_admin_suite@trusttrip.com", "password": "SuperSecureAdminPassword123!"},
+            json={"email": os.environ["TEST_ADMIN_EMAIL"], "password": os.environ["TEST_ADMIN_PASSWORD"]},
             headers={"apikey": supabase_key, "Content-Type": "application/json"},
             timeout=15
         )

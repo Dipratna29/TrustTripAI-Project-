@@ -23,6 +23,8 @@ import { PaymentsPage } from './pages/payments/PaymentsPage';
 import { AdminsPage } from './pages/admins/AdminsPage';
 import { AuditLogsPage } from './pages/audit/AuditLogsPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { NotificationCenterPage } from './pages/alerts/NotificationCenterPage';
+import { OrdersPage, OrderDetailPage } from './pages/orders/OrdersPage';
 import { AdminRole } from './types';
 
 // Route Guards
@@ -96,6 +98,9 @@ export const App: React.FC = () => {
               <Route path="offers" element={<OffersPage />} />
               <Route path="pricing" element={<PricingPage />} />
               <Route path="payments" element={<PaymentsPage />} />
+              <Route path="orders" element={<OrdersPage />} />
+              <Route path="orders/:id" element={<OrderDetailPage />} />
+              <Route path="notification-center" element={<NotificationCenterPage />} />
 
               {/* Administration & Security */}
               <Route

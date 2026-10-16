@@ -14,11 +14,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import app
 from database import get_supabase
+from live_test_support import require_live
 
 
 class TestTrustTripMobileAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_live()
         from database.supabase_client import get_supabase
         cls.client = app.test_client()
         cls.supabase = get_supabase()
@@ -89,6 +91,9 @@ class TestTrustTripMobileAPI(unittest.TestCase):
         self.assertTrue(data.get("success"))
         user = data.get("user")
         self.assertEqual(user.get("username"), self.test_username)
+        self.assertTrue(data.get("token"))
+        # Later tests call protected routes as this traveler
+        self.__class__.client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {data['token']}"
         self.assertEqual(user.get("status"), "ACTIVE")
         print(f"\n[TEST PASS] Login successful for user: {user.get('username')}")
 

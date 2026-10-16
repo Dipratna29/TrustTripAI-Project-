@@ -300,6 +300,40 @@ export default function AppIcon({ name, size = 20, color = colors.primary, style
           </Svg>
         );
 
+      case "sunny":
+      case "sunny-outline":
+        return (
+          <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <Circle cx="12" cy="12" r="4.5" />
+            <Path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </Svg>
+        );
+
+      case "partly-sunny":
+      case "cloudy":
+      case "cloudy-outline":
+        return (
+          <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M17.5 19H8a5 5 0 1 1 1.1-9.9A6 6 0 0 1 20.5 12a3.5 3.5 0 0 1-3 7z" />
+          </Svg>
+        );
+
+      case "rainy":
+      case "thunderstorm":
+      case "snow":
+        return (
+          <Svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M17.5 15H8a5 5 0 1 1 1.1-9.9A6 6 0 0 1 20.5 8a3.5 3.5 0 0 1-3 7z" />
+            {name === "thunderstorm" ? (
+              <Polyline points="13 15 10 19 14 19 11 23" />
+            ) : name === "snow" ? (
+              <Path d="M8 19h.01M12 21h.01M16 19h.01" />
+            ) : (
+              <Path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3" />
+            )}
+          </Svg>
+        );
+
       case "camera":
       case "camera-outline":
         return (

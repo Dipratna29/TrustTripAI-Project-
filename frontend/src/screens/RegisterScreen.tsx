@@ -48,8 +48,8 @@ export default function RegisterScreen({ navigation }: any) {
         Alert.alert("Required Field", "Please enter a password.");
         return;
       }
-      if (password.length < 6) {
-        Alert.alert("Security Requirement", "Password must be at least 6 characters.");
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        Alert.alert("Security Requirement", "Password must be at least 8 characters and include a letter and a number.");
         return;
       }
       if (password !== confirmPassword) {

@@ -28,6 +28,7 @@ class Config:
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
     GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
     MYMEMORY_EMAIL = os.environ.get("MYMEMORY_EMAIL", "")
+    OCR_SPACE_API_KEY = os.environ.get("OCR_SPACE_API_KEY", "")
 
     @classmethod
     def validate(cls):

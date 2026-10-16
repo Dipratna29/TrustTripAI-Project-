@@ -1,5 +1,7 @@
 import React from 'react';
-import { Menu, Sun, Moon, LogOut, Activity } from 'lucide-react';
+import { Menu, Sun, Moon, LogOut, Activity, BellRing } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useAdminEvents } from '../../context/AdminEventsContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Badge } from '../common/Badge';
@@ -11,6 +13,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { unread, criticalUnread } = useAdminEvents();
 
   return (
     <header className="h-16 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 z-30">
@@ -33,6 +36,20 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }) => {
 
       {/* Right side: Actions & User Menu */}
       <div className="flex items-center gap-3">
+        {/* Notification center bell */}
+        <Link
+          to="/notification-center"
+          title={`${unread} unread notifications`}
+          className="relative p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <BellRing className="w-4 h-4" />
+          {unread > 0 && (
+            <span className={`absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full text-[9px] font-bold text-white flex items-center justify-center ${criticalUnread > 0 ? 'bg-rose-600' : 'bg-amber-500'}`}>
+              {unread > 99 ? '99+' : unread}
+            </span>
+          )}
+        </Link>
+
         {/* Dark/Light mode toggle */}
         <button
           onClick={toggleTheme}

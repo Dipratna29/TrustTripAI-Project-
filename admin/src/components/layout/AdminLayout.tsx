@@ -3,11 +3,13 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { SOSAlertBanner } from './SOSAlertBanner';
+import { AdminEventsProvider } from '../../context/AdminEventsContext';
 
 export const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
+    <AdminEventsProvider>
     <div className="min-h-screen bg-slate-50 dark:bg-navy-950 flex flex-col">
       {/* Realtime SOS Alert Beacon */}
       <SOSAlertBanner />
@@ -26,5 +28,6 @@ export const AdminLayout: React.FC = () => {
         </div>
       </div>
     </div>
+    </AdminEventsProvider>
   );
 };

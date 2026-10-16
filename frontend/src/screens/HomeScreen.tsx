@@ -15,6 +15,7 @@ import CosmicBackground from "../components/common/CosmicBackground";
 import AppIcon from "../components/common/AppIcon";
 import CustomBottomNav from "../components/common/CustomBottomNav";
 import { useLocationContext } from "../context/LocationContext";
+import HomeMetrics from "../components/home/HomeMetrics";
 import { colors, radius } from "../theme";
 
 const { width } = Dimensions.get("window");
@@ -22,7 +23,7 @@ const QUICK_ACTION_WIDTH = (width - 40 - 20) / 3;
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
-  const [userName, setUserName] = useState("Divya");
+  const [userName, setUserName] = useState("");
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [activeSOS, setActiveSOS] = useState<any>(null);
 
@@ -138,7 +139,7 @@ export default function HomeScreen() {
       <View style={styles.topHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.greetingTitle}>
-            {getGreeting()}, <Text style={styles.greetingName}>{userName}!</Text> 👋
+            {getGreeting()}, <Text style={styles.greetingName}>{userName || "Traveler"}!</Text> 👋
           </Text>
           <Text style={styles.greetingSubtitle}>Stay safe on your journey.</Text>
         </View>
@@ -233,23 +234,7 @@ export default function HomeScreen() {
 
         {/* 3. THREE METRICS TILES (WEATHER, CROWD, SAFE STATUS) */}
         <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <AppIcon name="sunny" size={20} color="#F59E0B" />
-            <Text style={styles.metricVal}>28°C</Text>
-            <Text style={styles.metricSub}>Clear</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <AppIcon name="people" size={20} color="#00C292" />
-            <Text style={styles.metricVal}>Low</Text>
-            <Text style={styles.metricSub}>0% Crowd Level</Text>
-          </View>
-
-          <View style={styles.metricCard}>
-            <AppIcon name="shield-checkmark" size={20} color="#00C292" />
-            <Text style={styles.metricVal}>Safe</Text>
-            <Text style={styles.metricSub}>Area Status</Text>
-          </View>
+          <HomeMetrics />
         </View>
 
         {/* 4. EMERGENCY SOS ACTION BAR */}
@@ -398,6 +383,15 @@ export default function HomeScreen() {
           >
             <AppIcon name="document-text-outline" size={18} color="#8B5CF6" />
             <Text style={styles.serviceChipText}>My Activity</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.serviceChip}
+            onPress={() => navigation.navigate("Offers")}
+            activeOpacity={0.8}
+          >
+            <AppIcon name="pricetag-outline" size={18} color="#F59E0B" />
+            <Text style={styles.serviceChipText}>Offers</Text>
           </TouchableOpacity>
         </View>
 
@@ -703,11 +697,13 @@ const styles = StyleSheet.create({
   },
   moreServicesRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 10,
   },
   serviceChip: {
-    flex: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

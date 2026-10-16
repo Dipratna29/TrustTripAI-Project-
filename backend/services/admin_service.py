@@ -87,15 +87,9 @@ def validate_admin_token(token: str) -> Tuple[Optional[Dict[str, Any]], Optional
                 user_uuid = auth_user.id
                 user_email = auth_user.email
         except Exception as auth_err:
-            logger.warning("Supabase auth.get_user notice: %s", auth_err)
-            # Try decoding token payload directly with PyJWT if service key / test token
-            try:
-                import jwt
-                decoded = jwt.decode(token, options={"verify_signature": False})
-                user_uuid = decoded.get("sub") or decoded.get("user_id") or "admin-user"
-                user_email = decoded.get("email") or "admin@trusttrip.com"
-            except Exception:
-                pass
+            # Never fall back to decoding the JWT without verifying its signature
+            logger.warning("Supabase auth.get_user rejected admin token: %s", auth_err)
+            return None, None
 
         if not user_email:
             return None, None
@@ -125,20 +119,13 @@ def validate_admin_token(token: str) -> Tuple[Optional[Dict[str, Any]], Optional
                     "email": user_email
                 }
         except Exception as db_err:
-            logger.warning("admin_users query fallback: %s", db_err)
+            logger.error("admin_users lookup failed: %s", db_err)
+            return None, None
 
-        # Fallback if admin_users record is being bootstrapped or table created
-        return {
-            "id": 1,
-            "user_id": user_uuid,
-            "email": user_email,
-            "name": user_email.split("@")[0].capitalize(),
-            "role": "SUPER_ADMIN",
-            "status": "ACTIVE"
-        }, {
-            "id": user_uuid,
-            "email": user_email
-        }
+        # A valid Supabase login is NOT enough: travelers have Supabase Auth accounts too.
+        # Only users present in admin_users are admins (bootstrap via /auth/setup-initial).
+        logger.warning("Rejected admin access for non-admin account %s", user_email)
+        return None, None
 
     except Exception as exc:
         logger.error("Error validating Supabase Auth token: %s", exc)

@@ -3,6 +3,7 @@ import logging
 from flask import Blueprint, request, jsonify
 from services.auth_service import register_user, login_user
 from services.auth_tokens import issue_token
+from services.password_reset_service import PasswordResetError, confirm_reset, request_reset
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -57,3 +58,39 @@ def login():
         "success": False,
         "message": error_msg or "Invalid username or password"
     }), status_code
+
+
+def _client_ip():
+    # ProxyFix (TRUST_PROXY=true) already rewrites remote_addr from the trusted proxy header
+    return request.remote_addr or ""
+
+
+@auth_bp.route("/auth/password-reset/request", methods=["POST"])
+def password_reset_request():
+    data = request.get_json(silent=True) or {}
+    try:
+        message = request_reset(str(data.get("identifier") or ""), _client_ip())
+        return jsonify({"success": True, "message": message}), 200
+    except PasswordResetError as err:
+        return jsonify({"success": False, "message": str(err)}), err.status
+    except Exception:
+        logging.getLogger(__name__).exception("Password reset request failed")
+        return jsonify({"success": False, "message": "Could not process the request. Please try again later."}), 500
+
+
+@auth_bp.route("/auth/password-reset/confirm", methods=["POST"])
+def password_reset_confirm():
+    data = request.get_json(silent=True) or {}
+    try:
+        confirm_reset(
+            str(data.get("identifier") or ""),
+            str(data.get("code") or ""),
+            data.get("new_password") or "",
+            _client_ip(),
+        )
+        return jsonify({"success": True, "message": "Your password has been changed. Sign in with your new password."}), 200
+    except PasswordResetError as err:
+        return jsonify({"success": False, "message": str(err)}), err.status
+    except Exception:
+        logging.getLogger(__name__).exception("Password reset confirm failed")
+        return jsonify({"success": False, "message": "Could not reset the password. Please try again later."}), 500

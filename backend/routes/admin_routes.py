@@ -132,17 +132,11 @@ def admin_login():
                 else:
                     return jsonify({"success": False, "message": "Unauthorized: Not an administrator account"}), 403
             except Exception as cnt_err:
-                logger.warning("admin_users table not accessible yet, creating session profile: %s", cnt_err)
-            
+                logger.error("admin_users table not accessible: %s", cnt_err)
+
             if not admin_record:
-                admin_record = {
-                    "id": 1,
-                    "user_id": user_uuid,
-                    "email": email,
-                    "name": email.split("@")[0].capitalize(),
-                    "role": "SUPER_ADMIN",
-                    "status": "ACTIVE"
-                }
+                # Never grant an admin session without a persisted admin_users record
+                return jsonify({"success": False, "message": "Unauthorized: Not an administrator account"}), 403
 
         if admin_record.get("status") != "ACTIVE":
             return jsonify({"success": False, "message": f"Account is {admin_record.get('status')}. Contact administrator."}), 403

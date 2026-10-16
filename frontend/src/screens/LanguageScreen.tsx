@@ -12,7 +12,9 @@ import {
 import * as Speech from "expo-speech";
 import * as Clipboard from "expo-clipboard";
 import { useNavigation } from "@react-navigation/native";
-import api from "../config/api";
+import { translateText, translationErrorMessage } from "../services/translationService";
+import VisualTranslator from "../components/translate/VisualTranslator";
+import VoiceInputButton from "../components/translate/VoiceInputButton";
 import CosmicBackground from "../components/common/CosmicBackground";
 import SurfaceCard from "../components/common/SurfaceCard";
 import ScreenHeader from "../components/common/ScreenHeader";
@@ -82,27 +84,10 @@ export default function LanguageScreen() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post(
-        "/translate",
-        { text: query, source_language: source, target_language: target },
-        { timeout: 20000 }
-      );
-
-      const result = res.data?.translated_text ?? res.data?.translation;
-      if (res.data?.success && result) {
-        setTranslatedText(result);
-      } else {
-        setTranslatedText("");
-        setError(res.data?.message || "Translation failed. Please try again.");
-      }
+      setTranslatedText(await translateText(query, source, target));
     } catch (err: any) {
       setTranslatedText("");
-      setError(
-        err?.response?.data?.message ||
-          (err?.request
-            ? "Can't reach the server. Check your internet connection."
-            : "Translation failed. Please try again.")
-      );
+      setError(translationErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -215,6 +200,13 @@ export default function LanguageScreen() {
           />
 
           <View style={styles.ioCardFooter}>
+            <View style={{ flex: 1 }}>
+              <VoiceInputButton
+                language={sourceLanguage}
+                disabled={loading}
+                onTranscript={(spoken) => setText(spoken)}
+              />
+            </View>
             {text ? (
               <TouchableOpacity
                 style={styles.clearBtn}
@@ -277,6 +269,15 @@ export default function LanguageScreen() {
             </View>
           </SurfaceCard>
         ) : null}
+
+        {/* VISUAL (CAMERA) TRANSLATION */}
+        <VisualTranslator
+          sourceLanguage={sourceLanguage}
+          targetLanguage={targetLanguage}
+          targetLabel={labelFor(targetLanguage)}
+          onSpeak={speakText}
+          onCopy={copyToClipboard}
+        />
 
         {/* COMMON TRAVEL PHRASES */}
         <View style={styles.sectionHeader}>

@@ -3,17 +3,25 @@ End-to-End API and Supabase Integration Verification Script for TrustTrip.
 Tests all endpoints using Flask test client against remote Supabase PostgreSQL.
 """
 
+import os
 import sys
 import unittest
 from app import app
 from database.supabase_client import get_supabase, check_supabase_connection
+from live_test_support import login_traveler, require_live
 
 
 class TrustTripIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        require_live("TEST_TRAVELER_USERNAME", "TEST_TRAVELER_PASSWORD")
         cls.client = app.test_client()
         cls.supabase = get_supabase()
+        cls.username = os.environ["TEST_TRAVELER_USERNAME"]
+        cls.password = os.environ["TEST_TRAVELER_PASSWORD"]
+        # Protected routes need the signed session token issued by /login
+        cls.user = login_traveler(cls.client, cls.username, cls.password)
+        cls.user_id = cls.user["id"]
 
     def test_01_health_check(self):
         """GET /health - Verifies backend health and Supabase connection."""
@@ -33,16 +41,17 @@ class TrustTripIntegrationTests(unittest.TestCase):
 
     def test_03_login_existing_migrated_user(self):
         """POST /login - Verifies login with migrated user."""
-        res = self.client.post("/login", json={"username": "testuser", "password": "password123"})
+        res = self.client.post("/login", json={"username": self.username, "password": self.password})
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertTrue(data.get("success"))
-        self.assertEqual(data.get("user", {}).get("username"), "testuser")
+        self.assertEqual(data.get("user", {}).get("username"), self.username)
+        self.assertTrue(data.get("token"))
         self.assertIsNotNone(data.get("user", {}).get("id"))
 
     def test_04_login_invalid_password(self):
         """POST /login - Rejects wrong password."""
-        res = self.client.post("/login", json={"username": "testuser", "password": "wrongpassword"})
+        res = self.client.post("/login", json={"username": self.username, "password": "WrongPassword999"})
         self.assertEqual(res.status_code, 401)
         data = res.get_json()
         self.assertFalse(data.get("success"))
@@ -75,10 +84,10 @@ class TrustTripIntegrationTests(unittest.TestCase):
 
     def test_06_profile_retrieval_and_update(self):
         """GET & PUT /profile/<username> - Fetch and update profile."""
-        res_get = self.client.get("/profile/testuser")
+        res_get = self.client.get(f"/profile/{self.username}")
         self.assertEqual(res_get.status_code, 200)
         profile = res_get.get_json()
-        self.assertEqual(profile.get("username"), "testuser")
+        self.assertEqual(profile.get("username"), self.username)
         self.assertNotIn("password", profile)
 
         # Update profile
@@ -89,16 +98,16 @@ class TrustTripIntegrationTests(unittest.TestCase):
             "nationality": "Indian",
             "emergency_contact": "+919876543211"
         }
-        res_put = self.client.put("/profile/testuser", json=update_payload)
+        res_put = self.client.put(f"/profile/{self.username}", json=update_payload)
         self.assertEqual(res_put.status_code, 200)
 
         # Verify updated data
-        res_get_updated = self.client.get("/profile/testuser")
+        res_get_updated = self.client.get(f"/profile/{self.username}")
         self.assertEqual(res_get_updated.get_json().get("address"), "Mumbai Central, India")
 
     def test_07_guides_and_ratings(self):
         """GET /guides, POST /rate-guide, POST /select-guide, POST /cancel-booking."""
-        res_guides = self.client.get("/guides?username=testuser")
+        res_guides = self.client.get(f"/guides?username={self.username}")
         self.assertEqual(res_guides.status_code, 200)
         guides = res_guides.get_json()
         self.assertIsInstance(guides, list)
@@ -150,24 +159,33 @@ class TrustTripIntegrationTests(unittest.TestCase):
         self.assertEqual(res_single_eq.get_json().get("id"), eq_id)
 
         # Place order
-        res_order = self.client.post("/place-order", json={
-            "user_id": 1,
+        # Cash on Delivery order; the server prices it (client total is ignored)
+        res_order = self.client.post("/orders/cod", json={
             "equipment_id": eq_id,
-            "quantity": 2,
-            "total_price": 998.00,
+            "quantity": 1,
             "latitude": 18.922,
-            "longitude": 72.834
+            "longitude": 72.834,
+            "delivery_address": "Integration test address, Mumbai",
+            "contact_phone": "+919876543210",
         })
         self.assertEqual(res_order.status_code, 200)
         order_data = res_order.get_json()
         self.assertIn("order_id", order_data)
 
         # Fetch user orders
-        res_user_orders = self.client.get("/user-orders/1")
+        res_user_orders = self.client.get(f"/user-orders/{self.user_id}")
         self.assertEqual(res_user_orders.status_code, 200)
         user_orders = res_user_orders.get_json()
         self.assertIsInstance(user_orders, list)
         self.assertGreater(len(user_orders), 0)
+
+    def test_08b_authorization_enforced(self):
+        """Protected routes reject missing or foreign identities."""
+        anon = app.test_client()
+        self.assertEqual(anon.get(f"/profile/{self.username}").status_code, 401)
+        self.assertEqual(anon.get(f"/user-orders/{self.user_id}").status_code, 401)
+        self.assertEqual(self.client.get(f"/user-orders/{int(self.user_id) + 1}").status_code, 403)
+        self.assertEqual(self.client.get("/profile/some_other_user").status_code, 403)
 
     def test_09_crowd_locations_and_tracking(self):
         """GET /crowd/locations, POST /crowd/location-update, GET /crowd/history/<id>, GET /crowd/settings."""

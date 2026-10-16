@@ -19,7 +19,8 @@ Maps use OpenStreetMap/CARTO tiles through Leaflet, and translation falls back a
    - `backend/database/admin_schema.sql`
    - `backend/database/migrations/001_admin_tables.sql`
    - `backend/database/migrations/002_razorpay_payment_integration.sql`
-   - `backend/database/migrations/003_cod_and_profile_photo.sql` (**new**: Cash on Delivery columns, `users.profile_photo_url`, public `avatars` bucket)
+   - `backend/database/migrations/003_cod_and_profile_photo.sql` (Cash on Delivery columns, `users.profile_photo_url`, public `avatars` bucket)
+   - `backend/database/migrations/004_admin_events_and_password_reset.sql` (admin Notification Center: `admin_events` table and triggers, missing order columns, `password_reset_codes`). All migrations are idempotent: re-running one is safe.
 3. **Project Settings → API**: copy the Project URL and the `service_role` key (backend only, never ship it in the app).
 
 ## 2. Backend API on Render
@@ -84,3 +85,16 @@ Important:
 - [ ] Keep `RAZORPAY_MODE=test` until you complete Razorpay KYC. Switch to `live` keys only then.
 - [ ] Set `CORS_ORIGINS` to the admin URL only.
 - [ ] Password reset is not automated yet. The Forgot Password screen tells users to contact support.
+
+## 6. Optional integrations (added with the notification / visual-translation update)
+
+| Feature | What to configure | Without it |
+| --- | --- | --- |
+| Android push notifications | Firebase project → Android app `com.trusttrip.app` → download `google-services.json`; `eas env:create --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --environment preview --environment production`; `eas credentials` → Android → upload the **FCM V1 service-account key**. Rebuild the APK. | In-app notifications and local alerts still work; remote push tokens can't be created ("Default FirebaseApp is not initialized"). |
+| SMS (password reset, welcome) | Render env: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` (or `TWILIO_MESSAGING_SERVICE_SID`). Indian numbers need a DLT-registered sender/template on Twilio. | Reset requests return the generic message but no code is sent; an admin "SMS delivery failing" alert is raised. |
+| Cloud OCR fallback | `OCR_SPACE_API_KEY` (free key from ocr.space) | Visual translation uses on-device ML Kit only (requires the native APK). |
+| Admin real-time updates | Migration 004 adds `admin_events` to the `supabase_realtime` publication | The admin site polls every 20 s. |
+
+Push delivery receipts: an admin with `notifications:write` can call `POST /api/admin/push/receipts/check` to update delivery status and deactivate dead device tokens.
+
+Live integration scripts (`backend/test_*.py`) create real data. They only run with `TRUSTTRIP_LIVE_TESTS=1` plus `TEST_ADMIN_EMAIL`/`TEST_ADMIN_PASSWORD`/`TEST_TRAVELER_USERNAME`/`TEST_TRAVELER_PASSWORD`; point them at a separate Supabase test project.

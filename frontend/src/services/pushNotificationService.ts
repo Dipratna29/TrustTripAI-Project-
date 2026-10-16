@@ -5,6 +5,7 @@
 
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../config/api";
 
@@ -78,6 +79,12 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   }
 };
 
+/** Why the last token request failed (shown in diagnostics; local notifications still work). */
+let lastPushError: "fcm_not_configured" | "token_unavailable" | null = null;
+export const getLastPushError = () => lastPushError;
+
+let tokenListener: Notifications.Subscription | null = null;
+
 /**
  * Get Expo push notification token for this device
  * @returns Promise<string | null> - The push token or null if unavailable
@@ -96,13 +103,18 @@ export const getExpoPushToken = async (): Promise<string | null> => {
       }
     }
 
-    // Safely attempt token retrieval without triggering LogBox modal
+    // projectId ties the token to this EAS project (required outside Expo Go)
+    const projectId =
+      (Constants.expoConfig?.extra as any)?.eas?.projectId || (Constants as any).easConfig?.projectId;
     try {
-      const token = await Notifications.getExpoPushTokenAsync();
+      const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+      lastPushError = null;
       return token.data || null;
     } catch (tokenErr: any) {
-      // Internal diagnostic log - safe and non-blocking
-      console.log("[PushNotificationService] Push token unavailable in current dev build:", tokenErr?.message || "Unavailable");
+      const msg = String(tokenErr?.message || tokenErr || "");
+      // Android needs Firebase Cloud Messaging: google-services.json in the build + FCM key in EAS
+      lastPushError = /FirebaseApp|google-services|FCM|firebase/i.test(msg) ? "fcm_not_configured" : "token_unavailable";
+      console.log("[PushNotificationService] Push token unavailable:", lastPushError);
       return null;
     }
   } catch (error: any) {
@@ -216,6 +228,15 @@ export const initializePushNotifications = async (): Promise<{
     // Register with backend
     const result = await registerPushTokenWithBackend(user.id, pushToken);
 
+    // Re-register automatically if FCM rotates the device token
+    if (!tokenListener) {
+      tokenListener = Notifications.addPushTokenListener(() => {
+        getExpoPushToken()
+          .then((fresh) => (fresh ? registerPushTokenWithBackend(user.id, fresh) : null))
+          .catch(() => {});
+      });
+    }
+
     if (result.success) {
       return {
         success: true,
@@ -259,6 +280,13 @@ export const getStoredPushToken = async (): Promise<{
  */
 export const clearStoredPushToken = async (): Promise<void> => {
   try {
+    // Stop pushes to this phone for the signed-out account (needs the session, so call before logout clears it)
+    const stored = await getStoredPushToken();
+    if (stored?.deviceId) {
+      await api.delete(`/device/${stored.deviceId}`, { data: { user_id: stored.userId } }).catch(() => {});
+    }
+    tokenListener?.remove();
+    tokenListener = null;
     await AsyncStorage.removeItem("pushToken");
   } catch (error) {
     console.error("Error clearing push token:", error);

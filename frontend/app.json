@@ -14,7 +14,7 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
         "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone.",
-        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to use the camera to take a profile picture.",
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to use the camera for your profile picture and to translate signs and menus.",
         "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos to set a profile picture.",
         "NSLocationWhenInUseUsageDescription": "TrustTrip uses your location to show nearby safety zones and send it with SOS alerts."
       },
@@ -60,7 +60,17 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow TrustTrip to access your photos to set a profile picture.",
-          "cameraPermission": "Allow TrustTrip to use the camera to take a profile picture."
+          "cameraPermission": "Allow TrustTrip to use the camera for your profile picture and to translate signs and menus."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow TrustTrip to use the microphone for voice translation.",
+          "speechRecognitionPermission": "Allow TrustTrip to convert your speech to text for translation.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ]
     ],

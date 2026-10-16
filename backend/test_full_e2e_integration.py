@@ -12,18 +12,21 @@ TEST 7: Android user updates profile -> Verify Admin sees updated profile
 TEST 8: Admin updates inventory -> Verify mobile inventory reflects change
 """
 
+import os
 import time
 import unittest
 import requests
 
 BACKEND_URL = "http://127.0.0.1:5000"
-ADMIN_EMAIL = "admin@trusttrip.com"
-ADMIN_PASSWORD = "AdminSecurePassword2026!"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "")
 
 
 class TestTrustTripFullE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        from live_test_support import require_live
+        require_live("TEST_ADMIN_EMAIL", "TEST_ADMIN_PASSWORD")
         print("\n" + "=" * 70)
         print("TRUSTTRIP FULL-STACK E2E SYSTEM INTEGRATION TESTS")
         print("=" * 70)

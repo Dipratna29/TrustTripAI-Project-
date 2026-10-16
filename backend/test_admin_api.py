@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app import app
 from database.supabase_client import get_supabase
 from services.admin_service import ROLES, validate_admin_token
+from live_test_support import require_live
 
 
 class TestAdminAPI(unittest.TestCase):
@@ -34,66 +35,17 @@ class TestAdminAPI(unittest.TestCase):
         cls.supabase_url = os.environ.get("SUPABASE_URL", "").strip()
         cls.supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
-        # Create or ensure a test admin user in Supabase Auth & admin_users
-        cls.admin_email = "test_admin_suite@trusttrip.com"
-        cls.admin_password = "SuperSecureAdminPassword123!"
-
-        try:
-            # Check if auth user exists
-            users = cls.supabase.auth.admin.list_users()
-            user_list = getattr(users, "users", users) if not isinstance(users, list) else users
-            found = next((u for u in user_list if getattr(u, "email", None) == cls.admin_email), None)
-
-            if not found:
-                created = cls.supabase.auth.admin.create_user({
-                    "email": cls.admin_email,
-                    "password": cls.admin_password,
-                    "email_confirm": True
-                })
-                cls.auth_user_id = created.user.id
-            else:
-                cls.auth_user_id = found.id
-
-            # Ensure admin record exists in public.admin_users
-            try:
-                cls.supabase.table("admin_users").upsert({
-                    "user_id": cls.auth_user_id,
-                    "email": cls.admin_email,
-                    "name": "Test Admin",
-                    "role": "SUPER_ADMIN",
-                    "status": "ACTIVE"
-                }, on_conflict="email").execute()
-            except Exception as adm_e:
-                print("admin_users upsert notice:", adm_e)
-        except Exception as u_err:
-            print("Auth user creation notice:", u_err)
-
-        try:
-            # Sign in statelessly to get valid JWT token
-            auth_url = f"{cls.supabase_url}/auth/v1/token?grant_type=password"
-            auth_res = requests.post(
-                auth_url,
-                json={"email": cls.admin_email, "password": cls.admin_password},
-                headers={"apikey": cls.supabase_key, "Content-Type": "application/json"},
-                timeout=12
-            )
-            if auth_res.status_code == 200:
-                cls.token = auth_res.json().get("access_token")
-                cls.auth_headers = {
-                    "Authorization": f"Bearer {cls.token}",
-                    "Content-Type": "application/json"
-                }
-            else:
-                raise RuntimeError(f"Auth failed with {auth_res.status_code}: {auth_res.text}")
-        except Exception as e:
-            print("Sign in notice:", e)
-            import jwt
-            # Fallback signed test token
-            cls.token = jwt.encode({"sub": "admin-test-id", "email": cls.admin_email, "role": "SUPER_ADMIN"}, "secret", algorithm="HS256")
-            cls.auth_headers = {
-                "Authorization": f"Bearer {cls.token}",
-                "Content-Type": "application/json"
-            }
+        # Uses an EXISTING admin of the (test) project; credentials come from the environment.
+        # Previously this created a SUPER_ADMIN whose password was committed to the repository,
+        # and fell back to an unsigned token.
+        require_live("TEST_ADMIN_EMAIL", "TEST_ADMIN_PASSWORD")
+        cls.admin_email = os.environ["TEST_ADMIN_EMAIL"]
+        cls.admin_password = os.environ["TEST_ADMIN_PASSWORD"]
+        res = cls.client.post("/api/admin/auth/login", json={"email": cls.admin_email, "password": cls.admin_password})
+        if res.status_code != 200:
+            raise RuntimeError(f"Test admin login failed ({res.status_code})")
+        cls.token = res.get_json().get("token")
+        cls.auth_headers = {"Authorization": f"Bearer {cls.token}", "Content-Type": "application/json"}
 
     def test_01_health_and_index(self):
         """Test general health and system diagnostics."""
