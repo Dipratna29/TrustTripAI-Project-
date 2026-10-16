@@ -18,8 +18,9 @@ OPEN_METEO = {"current": {"time": "2026-10-16T14:00", "temperature_2m": 35.04, "
                           "relative_humidity_2m": 34, "weather_code": 61, "wind_speed_10m": 11.5, "is_day": 1}}
 
 
-def _resp(body):
+def _resp(body, status=200):
     r = MagicMock()
+    r.status_code = status
     r.json.return_value = body
     r.raise_for_status.return_value = None
     return r
@@ -38,6 +39,18 @@ class WeatherTests(unittest.TestCase):
         self.assertFalse(a["cached"])
         self.assertTrue(b["cached"])
         self.assertEqual(get.call_count, 1)
+
+    def test_falls_back_to_met_norway_when_open_meteo_is_blocked(self):
+        met = {"properties": {"timeseries": [{"time": "2026-10-16T09:00:00Z", "data": {
+            "instant": {"details": {"air_temperature": 34.6, "relative_humidity": 35.7, "wind_speed": 3.9}},
+            "next_1_hours": {"summary": {"symbol_code": "heavyrain"}}}}]}}
+        responses = [_resp({"reason": "Daily API request limit exceeded"}, 429), _resp(met)]
+        with patch.object(weather_service.requests, "get", side_effect=responses) as get:
+            body = self.client.get("/weather?lat=16.69&lon=74.46").get_json()
+        self.assertEqual((body["provider"], body["temperature_c"], body["condition"], body["icon"]),
+                         ("MET Norway", 34.6, "Heavy rain", "rainy"))
+        self.assertEqual(body["wind_kph"], 14.0)
+        self.assertIn("TrustTrip", get.call_args.kwargs["headers"]["User-Agent"])  # required by MET Norway
 
     def test_validation(self):
         self.assertEqual(self.client.get("/weather").status_code, 400)
